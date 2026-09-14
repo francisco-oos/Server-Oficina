@@ -26,7 +26,7 @@ El sistema **no es un veredicto**. Registra hechos, fuentes, historial y context
 
 ## Entrega inmediata
 
-La versión `0.1.0-alpha.1` termina primero un corte vertical de **Oficina / Personal**:
+La versión `0.1.0-alpha.2` termina primero un corte vertical de **Oficina / Personal**:
 
 - autenticación y permisos;
 - persona independiente de su ID laboral;

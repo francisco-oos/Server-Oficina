@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Server Oficina
+Comment=Abrir Server Oficina en el navegador local
+Exec=xdg-open http://127.0.0.1:8080
+Icon=web-browser
+Terminal=false
+Categories=Office;

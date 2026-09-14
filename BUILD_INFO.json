@@ -1,0 +1,44 @@
+{
+  "product": "Server Oficina",
+  "version": "0.1.0-alpha.2",
+  "built_at_utc": "2026-09-11T08:41:58Z",
+  "source_artifact": {
+    "name": "Server-Oficina-0.1.0-alpha.1(1).zip",
+    "sha256": "9c0892ebffc5c82a5e7c8ab41e078f8afbb4b742467e47b2b1b347c33f4410f9"
+  },
+  "architecture": "monorepo-modular-monolith",
+  "deployment_target": "Dell Latitude 7220 Rugged Extreme / Debian 13 / Docker PostgreSQL + host systemd FastAPI",
+  "validation": {
+    "backend": "PASS: 11 pytest + compileall",
+    "frontend_contract": "PASS: JavaScript syntax + structural/API contract",
+    "deployment_contract": "PASS: shell syntax + PostgreSQL 18.6 localhost bind + /srv persistence",
+    "http_smoke": "PASS: health/setup/root/static on isolated SQLite runtime",
+    "browser_e2e": "BLOCKED_BUILD_ENV: managed Chromium URLBlocklist=*; runner included for Latitude/QA host"
+  },
+  "physical_host_evidence_before_release_install": {
+    "docker_containerd_reboot": "PASS",
+    "docker_data_root_srv": "PASS",
+    "postgres_18_6_healthy": "PASS",
+    "postgres_persistence_restart": "PASS",
+    "pg_dump_custom": "PASS",
+    "pg_restore_temp_database": "PASS",
+    "sleep_hibernate_masked": "PASS",
+    "short_power_key_ignored": "PASS"
+  },
+  "research_integrated": [
+    "ISO 55000:2024",
+    "ISO 14224:2016",
+    "ISO 17359:2018",
+    "ISO 13379-1:2025",
+    "ISO 13381-1:2025",
+    "GS1 EPCIS 2.0",
+    "HR Open / JEDx",
+    "STPS SIRCE context",
+    "NOM-017-STPS-2024",
+    "internal Node Health audit",
+    "internal cellular retirement note",
+    "internal seismic inventory procedure"
+  ],
+  "scope": "Office/Personnel + Tracking Core hardening; Asset Core/Nodes/HSE/Transport remain documented future modules",
+  "release_status": "ALPHA_VALIDATED_PACKAGE_NOT_YET_INSTALLED_AS_ALPHA2_ON_PHYSICAL_HOST"
+}

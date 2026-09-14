@@ -1,47 +1,78 @@
-# 08 · Plan de pruebas y gates
+# 08 · Plan de pruebas y gates — alpha.2
 
-## Suite ejecutada en esta entrega
+## Suite heredada y revalidada
 
-Entorno de construcción disponible: Python del contenedor, SQLite aislado para test.
-
-Comandos:
-
-```bash
-pytest
-python3 -m compileall -q app tests run.py
+```text
+pytest: 11 passed
+compileall: OK
+node --check app/static/app.js: OK
+bash -n scripts/launchers: OK
 ```
 
-Resultado registrado al empaquetar:
+## Validadores separados
 
-- `7 passed`;
-- `compileall`: OK;
-- arranque Uvicorn local: OK;
-- `GET /api/health`: HTTP 200.
+```bash
+./scripts/verify-backend.sh
+./scripts/verify-frontend.sh
+./scripts/verify-deploy.sh
+./VALIDAR_SERVER_OFICINA.sh
+```
 
-## Casos cubiertos
+### Backend
 
-1. health básico;
-2. identidad estable al recontratar con ID laboral distinto;
-3. un supervisor puede solicitar EPP pero recibe 403 al intentar validarlo;
-4. HR/Admin puede validar y crea historial oficial EPP;
-5. importación XLSX primero PREVIEW, luego COMMIT;
-6. capacitación RRHH→HSE;
-7. caso registra hecho y queda abierto sin sanción automática;
-8. `occurred_at < recorded_at` en reporte tardío.
+- health;
+- bootstrap admin;
+- usuario con rol;
+- identidad estable/rehire;
+- baja y recontratación por API;
+- EPP supervisor solicita pero no valida;
+- HR/Admin valida;
+- importación XLSX PREVIEW→COMMIT + SHA;
+- capacitación RRHH→HSE;
+- caso sin sanción automática + resolución humana;
+- reporte tardío `occurred_at` vs `recorded_at`.
 
-## Limitaciones de esta ejecución
+### Frontend
 
-El entorno de construcción no tuvo salida DNS para `pip`; por ello las dependencias se probaron con las versiones ya presentes en el entorno y SQLite. `psycopg` no estaba instalado allí. El instalador Debian sí declara `psycopg[binary]` y debe ejecutarse/validarse en la Latitude con PostgreSQL.
+- sintaxis JavaScript;
+- IDs estructurales requeridos;
+- contratos API mínimos presentes;
+- ausencia de dependencias CDN en `index.html`;
+- ausencia de datos demo incrustados conocidos.
 
-## Gates antes de 0.1 estable
+Esto **no reemplaza E2E en navegador real**.
 
-- [ ] `pip install -r requirements.txt` en Debian físico;
-- [ ] PostgreSQL real y migración/arranque;
-- [ ] systemd tras reboot;
-- [ ] acceso LAN concurrente;
-- [ ] Excel real de Oficina: preview correcto;
-- [ ] prueba de duplicado/recontratación real;
-- [ ] EPP con usuarios HR/Supervisor reales;
-- [ ] backup y restauración en host físico;
-- [ ] Playwright/E2E básico en navegador real;
-- [ ] revisión de permisos y datos sensibles.
+### Despliegue
+
+- sintaxis de todos los operadores shell;
+- contrato compose: PostgreSQL 18.6, bind localhost 5432 y persistencia `/srv`;
+- service unit bajo usuario sin privilegios.
+
+## Evidencia física ya conseguida durante preparación del host
+
+- Docker/containerd arrancan después de reboot;
+- Docker y containerd almacenan en `/srv/docker`;
+- PostgreSQL 18.6 healthy;
+- persistencia después de restart;
+- pg_dump custom;
+- pg_restore a base temporal.
+
+## Gates pendientes antes de llamar 0.1 estable
+
+- [ ] `INSTALAR_EN_TABLETA.sh` completo;
+- [ ] app systemd tras reboot;
+- [ ] bootstrap admin real;
+- [ ] acceso PC + teléfono LAN;
+- [ ] copia de Excel real Oficina: preview;
+- [ ] resolver una ambigüedad/recontratación real;
+- [ ] permisos HR/HSE/Supervisor reales;
+- [ ] backup integral app+BD y restore integral;
+- [ ] navegador E2E real;
+- [ ] revisión de permisos/datos sensibles;
+- [ ] estabilidad 24 h sin suspensión.
+
+## Gate E2E de navegador
+
+Se incluye `VALIDAR_FRONTEND_E2E.sh` / `scripts/verify-frontend-e2e.sh`. Arranca una instancia aislada con SQLite temporal y usa Playwright + Chromium/Chrome para recorrer: configuración inicial, login, dashboard, alta de persona, detalle y logout.
+
+Este gate es adicional al contrato estático y al smoke HTTP. Si la máquina de validación carece de Playwright o navegador compatible, debe reportarse `E2E_BLOCKED`, nunca fingir PASS. El entorno de construcción de alpha.2 tiene Chromium administrado con `URLBlocklist=*`, por lo que el navegador local bloquea localhost; el runner quedó preparado para ejecutarse en la Latitude/QA host sin esa política.

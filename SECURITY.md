@@ -1,26 +1,34 @@
-# Seguridad · 0.1.0-alpha.1
+# Seguridad · 0.1.0-alpha.2
 
 ## Principios activos
 
 - contraseñas con `scrypt` + salt aleatorio;
-- sesión opaca aleatoria; en BD sólo se almacena SHA-256 del token;
+- sesión opaca aleatoria; en BD sólo SHA-256 del token;
 - cookie `HttpOnly` + `SameSite=Lax`;
 - permisos granulares por rol;
-- primer administrador sólo cuando no existe ningún usuario;
-- evidencia/importaciones con SHA-256 y nombres saneados con `Path.name`;
-- proceso systemd sin privilegios (`serveroficina`) y `NoNewPrivileges=true`;
-- datos persistentes fuera del código (`/var/lib/server-oficina`);
-- secretos fuera del repositorio (`/etc/server-oficina/server-oficina.env`).
+- bootstrap admin sólo si no existen usuarios;
+- evidencia/importaciones con SHA-256 y nombre saneado;
+- servicio `systemd` sin privilegios (`serveroficina`), `NoNewPrivileges`, `ProtectSystem`, `ProtectHome`;
+- datos persistentes en `/srv/server-oficina`, fuera del código;
+- Docker/containerd en `/srv/docker`;
+- PostgreSQL ligado a `127.0.0.1:5432`, no a la LAN;
+- secretos fuera del repo;
+- UFW recomendado: 8080 sólo desde subred LAN autorizada; el instalador sólo liga la app a `0.0.0.0` cuando detecta UFW activo, de lo contrario queda en `127.0.0.1`.
 
 ## Límites de alpha
 
-- HTTP LAN sin TLS. Antes de exponer fuera de LAN debe ponerse HTTPS/VPN y activar `SERVER_OFICINA_COOKIE_SECURE=true`;
-- no existe aún MFA/SSO;
-- no existe todavía rate-limit persistente de login;
-- archivos importados se validan por tipo/estructura, pero no existe antivirus/escaneo de malware;
-- no se ha realizado todavía prueba adversarial sobre host físico;
-- no abrir el puerto 8080 directamente a Internet.
+- HTTP LAN sin TLS; fuera de LAN usar VPN/HTTPS y cookie secure;
+- sin MFA/SSO;
+- sin rate-limit persistente de login;
+- archivos sin antivirus/malware scanning todavía;
+- E2E navegador físico pendiente;
+- no abrir 5432 a la LAN ni 8080 a Internet;
+- restore es una acción administrativa explícita, nunca automática.
 
-## Regla de datos humanos
+## Datos humanos
 
-La plataforma documenta hechos y evidencia; no genera sanciones automáticas ni scoring laboral opaco. Permisos y resolución pertenecen al área competente.
+La plataforma registra hechos/evidencia y no genera sanciones automáticas ni scoring laboral opaco. El acceso debe seguir mínimo privilegio y las exportaciones deben limitarse al área competente.
+
+## Equipos/vida útil
+
+Una observación predictiva (por ejemplo salud/RUL de NodeHealth) no autoriza retiro automático. Se conserva fuente, versión y decisión humana.

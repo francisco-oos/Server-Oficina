@@ -46,3 +46,10 @@ Las sesiones son opacas y revocables; la cookie contiene el token bruto y la BD 
 5. `occurred_at` y `recorded_at` nunca se confunden;
 6. una importación no modifica datos durante PREVIEW;
 7. el archivo original se conserva con hash.
+
+
+## Límites alpha.2
+
+No se agregan tablas paralelas de activos ni otro schema `core`. La fuente funcional sigue siendo el modelo SQLAlchemy existente. Los modelos futuros de Asset Core/roster/vigencia de cursos están documentados, no activos.
+
+Cuando se implemente una evolución de esquema con datos reales, se deberá introducir un mecanismo explícito de migraciones versionadas antes de modificar columnas/tablas existentes; `create_all` sólo cubre bootstrap/adiciones iniciales y no sustituye migraciones de producción.

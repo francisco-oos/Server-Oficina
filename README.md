@@ -1,90 +1,115 @@
-# Server Oficina 0.1.0-alpha.1
+# Server Oficina 0.1.0-alpha.2
 
-Primer candidato instalable del sistema acordado para **Adquisición de Datos**. La entrega visible es **Oficina / Personal** y debajo queda el **Tracking Core** temporal/auditable para crecer después a Control de Material, nodos, TX, Taller/Mantenimiento, Transporte, Seguridad/HSE y Supervisión.
+Candidato instalable y auditable del sistema **Server Oficina** para Adquisición de Datos. Esta versión conserva el corte funcional de **Oficina / Personal + Tracking Core** de alpha.1 y añade el endurecimiento de entrega/despliegue requerido para la Latitude 7220 real.
+
+## Arquitectura
+
+Monorepo, monolito modular:
+
+```text
+Navegador LAN
+   ↓
+FastAPI + UI web estática
+   ├── Auth / RBAC
+   ├── Oficina / Personal
+   ├── Importaciones
+   ├── EPP
+   ├── Capacitación
+   ├── Casos / Evidencia
+   └── Tracking Core
+   ↓
+PostgreSQL 18.6 en Docker
+   ↓
+/srv/server-oficina
+```
+
+No hay un frontend React/Vite separado. `app/static/` es el frontend y FastAPI lo sirve directamente.
 
 ## Qué resuelve ya
 
-- Login, sesiones opacas revocables y RBAC granular.
-- Primer administrador creado desde navegador; luego el bootstrap se bloquea.
-- Alta de usuarios por rol (`ADMIN`, `HR`, `HSE`, `OFFICE`, `SUPERVISOR`).
-- Dashboard de Oficina calculado desde la base.
-- Personas separadas de sus IDs/relaciones laborales: baja y recontratación pueden cambiar ID sin duplicar identidad.
-- Periodos/renovaciones contractuales listos para outsourcing.
-- Proyectos y grupos como relaciones temporales.
-- Directorio, búsqueda por nombre/ID laboral y expediente con timeline.
-- Importación XLSX/XLSM/CSV con **preview antes de commit**, SHA-256 y archivo original conservado.
-- Asistencia por columnas de fecha.
-- EPP: usuario autorizado solicita; **sólo RRHH/rol con `epp.validate_hr` valida**.
-- Capacitación: RRHH programa/lista; HSE confirma recibido/completado.
-- Casos/evidencias: se documentan hechos; la resolución humana está separada y no existe sanción automática.
-- Eventos con `occurred_at` / `recorded_at`, auditoría y procedencia.
-- Health check, scripts Debian, systemd, backup y restore.
-- UI web responsive sin build frontend pesado.
-- Cero datos reales hardcodeados.
+- login, sesiones opacas revocables y RBAC granular;
+- primer administrador creado desde navegador y bootstrap de un solo uso;
+- roles `ADMIN`, `HR`, `HSE`, `OFFICE`, `SUPERVISOR`;
+- personas separadas de IDs/relaciones laborales;
+- baja y recontratación con nuevo ID sin duplicar persona;
+- renovaciones/periodos de outsourcing;
+- proyectos y grupos temporales;
+- directorio, búsqueda por nombre/ID y expediente/timeline;
+- importación XLSX/XLSM/CSV con PREVIEW→COMMIT, SHA-256 y archivo original;
+- asistencia;
+- EPP con solicitud separada de validación RRHH;
+- capacitación RRHH→HSE;
+- casos/evidencias sin sanción automática;
+- `occurred_at` separado de `recorded_at`;
+- auditoría;
+- backup/restore;
+- UI responsive sin build frontend pesado;
+- cero datos reales hardcodeados.
 
-## Estructura
+## Qué aporta alpha.2
 
-```text
-app/
-  api/          API y permisos
-  core/         configuración, seguridad y RBAC
-  db/           modelo relacional
-  services/     importación, eventos, auditoría, bootstrap
-  static/       dashboard/UI web
-scripts/        instalación, backup, restore, smoke
-deploy/         unidades systemd
-docs/           problema, arquitectura, decisiones, referencias, descartes, modelo y roadmap
-references/     registro machine-readable de repositorios revisados
-tests/          pruebas automáticas
-```
+- despliegue adaptado a Debian 13 + Docker/PostgreSQL ya preparado en la Latitude;
+- PostgreSQL/Docker en `/srv`, no en el pequeño `/var`;
+- Postgres sólo expuesto a `127.0.0.1:5432` para la aplicación host;
+- servicio `systemd` sin privilegios;
+- iniciadores raíz `INICIAR/DETENER/REINICIAR/ESTADO/LOGS/ABRIR/VALIDAR/BACKUP/RESTORE/INSTALAR`;
+- validadores explícitos `VALIDAR_BACKEND`, `VALIDAR_FRONTEND`, `VALIDAR_DESPLIEGUE` y `VALIDAR_FRONTEND_E2E`;
+- validadores separados de backend, frontend y despliegue;
+- acceso LAN 8080 restringible por UFW a la subred actual;
+- documentación nueva sobre ciclo de vida/vida útil de equipos y RRHH operativo;
+- matriz requisito→estado para impedir declarar funciones incompletas como terminadas.
 
-## Prueba local de desarrollo
+## Orden de lectura
+
+Empieza por `00_LEEME_PRIMERO.md`.
+
+## Validación local
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-dev.txt
-pytest
-python run.py
+./VALIDAR_SERVER_OFICINA.sh
+# Gate opcional pero explícito de navegador:
+./VALIDAR_FRONTEND_E2E.sh
 ```
 
-Abre `http://127.0.0.1:8080`.
+## Instalación en la Latitude preparada
 
-## Instalación en Latitude / Debian
-
-Cuando Debian esté listo, descomprime este ZIP y desde la raíz ejecuta:
+Desde la raíz descomprimida:
 
 ```bash
-sudo bash scripts/install-debian.sh
+./INSTALAR_EN_TABLETA.sh
 ```
 
-El instalador prepara PostgreSQL, directorios persistentes, servicio systemd y backup diario. Después abre `http://IP_DE_LA_TABLET:8080` y crea el primer administrador.
+El instalador **no instala PostgreSQL nativo**. Reutiliza/canoniza PostgreSQL 18.6 en Docker con persistencia en `/srv/server-oficina/data/postgres`, instala la aplicación versionada en `/opt/server-oficina/releases/<VERSION>`, crea `/opt/server-oficina/current`, configura `systemd` y prueba `/api/health`.
 
-Guía: `docs/07_INSTALACION_DEBIAN.md`.
+Después:
 
-## Estado de pruebas de esta entrega
+```bash
+./ESTADO_SERVER_OFICINA.sh
+./ABRIR_SERVER_OFICINA.sh
+```
 
-- `pytest`: **11 passed**.
-- `compileall`: OK.
-- `node --check app/static/app.js`: OK.
-- `bash -n scripts/*.sh`: OK.
-- arranque Uvicorn local/SQLite: OK.
-- `GET /api/health`: HTTP 200.
-- `GET /`: HTTP 200.
+## Operación rápida
 
-**Gate pendiente:** PostgreSQL/`psycopg`, systemd, reboot, LAN, archivos reales y backup/restore en la Latitude física. El entorno de construcción no tuvo DNS para instalar dependencias nuevas, por lo que esas pruebas deben ejecutarse en el host Debian.
+```bash
+./INICIAR_SERVER_OFICINA.sh
+./DETENER_SERVER_OFICINA.sh
+./REINICIAR_SERVER_OFICINA.sh
+./LOGS_SERVER_OFICINA.sh
+./BACKUP_SERVER_OFICINA.sh
+```
 
-## Documentación de mantenimiento
+## Investigación y evolución
 
-Empieza por:
+- `docs/12_INVESTIGACION_CICLO_VIDA_ACTIVOS.md`
+- `docs/13_INVESTIGACION_RRHH_OPERATIVO.md`
+- `docs/14_MATRIZ_REQUISITOS_Y_ESTADO.md`
+- `docs/15_CONTRATOS_Y_GATES_MODULARES.md`
 
-1. `docs/01_PROBLEMA_Y_FINALIDAD.md`
-2. `docs/02_ARQUITECTURA.md`
-3. `docs/03_DECISIONES_Y_RAZONAMIENTO.md`
-4. `docs/04_REFERENCIAS_REPOSITORIOS.md`
-5. `docs/05_DESCARTES.md`
-6. `TEST_RESULTS.md`
+La investigación **no adelanta tablas paralelas** en esta alpha. El siguiente módulo se agrega sólo después de cerrar gates del bloque actual.
 
-### Política de referencias
+## Política de referencias
 
-No se está adaptando la operación a Snipe-IT, Ralph, GLPI, OpenBoxes ni otro producto existente. Se estudian sus patrones y se implementa una solución propia para el dominio real. Toda incorporación futura de código/dependencias externas debe registrar commit, licencia, procedencia, motivo y pruebas.
+Los repositorios/estándares externos se estudian para patrones. No se fuerza la operación a Snipe-IT, Ralph, GLPI, OpenBoxes, HR Open u otro producto. Código externo sólo puede incorporarse con licencia, commit, procedencia, motivo y pruebas documentados.

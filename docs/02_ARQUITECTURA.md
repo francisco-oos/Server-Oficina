@@ -30,7 +30,7 @@ FastAPI + UI web estática
           └── evidencias
    │
    ▼
-PostgreSQL + /var/lib/server-oficina
+PostgreSQL 18.6 (Docker) + /srv/server-oficina
 ```
 
 ## Tracking Core
@@ -70,3 +70,10 @@ El Core separa:
 4. **resolución humana**.
 
 No existe un algoritmo de sanción o etiqueta "buen/mal empleado" en esta versión.
+
+
+## Despliegue físico alpha.2
+
+La app sigue como proceso `systemd` del host para que UFW controle 8080 con claridad. PostgreSQL se mantiene en Docker y se publica sólo en loopback (`127.0.0.1:5432`). Esta separación evita exponer la base a la LAN y evita consumir el pequeño `/var`.
+
+Código versionado: `/opt/server-oficina/releases/<VERSION>`; activo: `/opt/server-oficina/current`; datos persistentes: `/srv/server-oficina`.

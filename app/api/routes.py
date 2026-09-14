@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app import __version__
 from app.api.deps import current_user, require
 from app.core.config import load_settings
 from app.core.security import create_session, destroy_session, hash_password, permission_codes, verify_password
@@ -103,7 +104,7 @@ class ContractPeriodIn(BaseModel):
 @router.get("/health")
 def health(db: Session = Depends(get_db)):
     db.execute(select(1))
-    return {"ok": True, "service": "server-oficina", "version": "0.1.0-alpha.1", "time": datetime.now(timezone.utc).isoformat()}
+    return {"ok": True, "service": "server-oficina", "version": __version__, "time": datetime.now(timezone.utc).isoformat()}
 
 @router.get("/setup/status")
 def setup_status(db: Session = Depends(get_db)):

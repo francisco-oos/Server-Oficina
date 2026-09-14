@@ -1,10 +1,10 @@
 [Unit]
-Description=Backup diario Server Oficina
+Description=Server Oficina - backup diario
 
 [Timer]
-OnCalendar=*-*-* 02:15:00
+OnCalendar=*-*-* 03:15:00
 Persistent=true
-RandomizedDelaySec=900
+RandomizedDelaySec=10m
 
 [Install]
 WantedBy=timers.target

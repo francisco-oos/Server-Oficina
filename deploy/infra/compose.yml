@@ -1,0 +1,38 @@
+services:
+  postgres:
+    image: postgres:18.6
+    container_name: server-oficina-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: server_oficina
+      POSTGRES_USER: serveroficina
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      TZ: America/Mexico_City
+    secrets:
+      - postgres_password
+    volumes:
+      - /srv/server-oficina/data/postgres:/var/lib/postgresql
+    ports:
+      - "127.0.0.1:5432:5432"
+    networks:
+      - server_oficina_backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U serveroficina -d server_oficina"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+secrets:
+  postgres_password:
+    file: /srv/server-oficina/secrets/postgres_password
+
+networks:
+  server_oficina_backend:
+    name: server_oficina_backend
+    driver: bridge

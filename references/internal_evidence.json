@@ -1,0 +1,30 @@
+{
+  "reviewed_on": "2026-09-11",
+  "policy": "metadata-and-design-conclusions-only; do-not-bundle-sensitive-source-data",
+  "sources": [
+    {
+      "title": "Nota_informativa_baja_45_equipos_celulares.docx",
+      "date": "2026-08-13",
+      "classification": "internal-evidence",
+      "use": "multi-factor technical retirement and evidence-backed human resolution"
+    },
+    {
+      "title": "Informe_Auditoria_Node_Health_Analyzer_2026.pdf",
+      "date": "2026-07-16",
+      "classification": "internal-evidence",
+      "use": "separate autonomy, SOH and failure/replacement prognosis; require model/rule provenance and validation"
+    },
+    {
+      "title": "Examen Procedimiento general de control de inventarios de equipo sisimico.docx",
+      "date": "2026-07",
+      "classification": "internal-evidence",
+      "use": "delivery/receipt/count/reconciliation/exception reporting and signed custody workflow"
+    },
+    {
+      "title": "Panel de Control · Cuadrilla de Adquisición (HTML prototype)",
+      "date": "2026",
+      "classification": "internal-evidence",
+      "use": "integral HR search/card UX; embedded demo data and public-sheet sync explicitly rejected"
+    }
+  ]
+}

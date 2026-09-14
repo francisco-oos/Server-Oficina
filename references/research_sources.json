@@ -1,0 +1,66 @@
+{
+  "reviewed_on": "2026-09-11",
+  "policy": "conceptual-reference-not-copy",
+  "sources": [
+    {
+      "name": "ISO 55000:2024",
+      "url": "https://www.iso.org/standard/83053.html",
+      "use": "asset lifecycle, value and asset-management principles",
+      "status": "standard-reference"
+    },
+    {
+      "name": "ISO 14224:2016",
+      "url": "https://www.iso.org/standard/64076.html",
+      "use": "equipment/failure/maintenance data categories and downtime concepts",
+      "status": "standard-reference"
+    },
+    {
+      "name": "ISO 13381-1:2025",
+      "url": "https://www.iso.org/standard/88029.html",
+      "use": "prognostics process and data/characteristics/process requirements for future RUL estimates",
+      "status": "standard-reference"
+    },
+    {
+      "name": "ISO 13379-1:2025",
+      "url": "https://www.iso.org/standard/88027.html",
+      "use": "condition-monitoring data interpretation and diagnostics concepts",
+      "status": "standard-reference"
+    },
+    {
+      "name": "ISO 17359:2018",
+      "url": "https://www.iso.org/standard/71194.html",
+      "use": "condition-monitoring programme structure; observations before diagnosis/prognosis",
+      "status": "standard-reference"
+    },
+    {
+      "name": "GS1 EPCIS 2.0",
+      "url": "https://www.gs1.org/standards/epcis",
+      "use": "event traceability pattern: what/when/where/business context",
+      "status": "standard-reference"
+    },
+    {
+      "name": "HR Open Standards",
+      "url": "https://www.hropenstandards.org/standards-downloads",
+      "use": "HR interoperability vocabulary and worker/employment separation concepts",
+      "status": "standard-reference"
+    },
+    {
+      "name": "HR Open JEDx Open API Specification",
+      "url": "https://www.hropenstandards.org/jedx-open-api-specifications",
+      "use": "workers and organizations API vocabulary reference",
+      "status": "standard-reference"
+    },
+    {
+      "name": "STPS SIRCE / constancias de competencias",
+      "url": "https://www.gob.mx/stps/acciones-y-programas/stps-04-002-presentacion-de-listas-de-constancias-o-de-competencias-laborales",
+      "use": "training-record context; not a claim of automated legal compliance",
+      "status": "regulatory-context"
+    },
+    {
+      "name": "NOM-017-STPS-2024",
+      "url": "https://dof.gob.mx/normasOficiales/9496/stps/stps.html",
+      "use": "PPE lifecycle context: selection/use/review/replacement/maintenance/storage/disposal",
+      "status": "regulatory-context"
+    }
+  ]
+}

@@ -1,69 +1,71 @@
-# 07 · Instalación Debian / Latitude
+# 07 · Instalación Debian / Latitude — alpha.2
 
-## Supuestos
+## Importante
 
-- Debian ya instalado y con red funcional;
-- usuario con `sudo`;
-- el ZIP se copia completo a la tablet;
-- Internet disponible durante la **primera instalación de dependencias Python** o un mirror/wheelhouse preparado. El paquete no incluye `venv` ni dependencias binarias.
+Esta guía sustituye el instalador alpha.1. **No instale PostgreSQL nativo** ni use `/var/lib/server-oficina` en la Latitude preparada.
 
-## Instalación
+## Precondiciones verificadas
 
-Desde la raíz descomprimida:
+- Debian 13 Trixie amd64;
+- SSH;
+- UFW;
+- Docker Engine + Compose;
+- `/srv/server-oficina`;
+- `/srv/docker`;
+- PostgreSQL 18.6 probado con persistencia y restore.
+
+## Instalar release
 
 ```bash
-sudo bash scripts/install-debian.sh
+chmod +x *.sh scripts/*.sh
+./VALIDAR_SERVER_OFICINA.sh
+./INSTALAR_EN_TABLETA.sh
 ```
 
 El instalador:
 
-1. instala Python, PostgreSQL, `rsync`, `curl`, `openssl`;
-2. crea usuario de servicio `serveroficina`;
-3. copia a `/opt/server-oficina`;
-4. crea `/var/lib/server-oficina/{imports,evidence,backups}`;
-5. crea usuario/base PostgreSQL;
-6. genera configuración en `/etc/server-oficina/server-oficina.env`;
-7. instala `systemd`;
-8. ejecuta health check;
-9. habilita backup diario.
+1. conserva/genera el secreto PostgreSQL en `/srv/server-oficina/secrets/postgres_password`;
+2. instala el compose canónico en `/srv/server-oficina/app/infra/compose.yml`;
+3. levanta PostgreSQL 18.6 con datos en `/srv/server-oficina/data/postgres`;
+4. publica PostgreSQL sólo en `127.0.0.1:5432`;
+5. instala la release en `/opt/server-oficina/releases/<VERSION>`;
+6. crea `.venv` por release;
+7. actualiza `/opt/server-oficina/current`;
+8. genera `/etc/server-oficina/server-oficina.env`;
+9. instala/arranca `server-oficina.service`;
+10. instala backup timer;
+11. prueba `/api/health`;
+12. si UFW está activo, intenta permitir 8080 únicamente desde la subred LAN actual.
 
-Luego abre:
-
-```text
-http://IP_DE_LA_TABLET:8080
-```
-
-La primera apertura permite crear **un único administrador inicial**; después el endpoint queda bloqueado.
-
-## Verificación
+## Estado
 
 ```bash
-sudo systemctl status server-oficina
-curl http://127.0.0.1:8080/api/health
-sudo journalctl -u server-oficina -f
+./ESTADO_SERVER_OFICINA.sh
 ```
 
-## Backup
+## Abrir localmente
 
 ```bash
-sudo /opt/server-oficina/scripts/backup.sh
+./ABRIR_SERVER_OFICINA.sh
 ```
 
-Incluye `pg_dump`, evidencia/importaciones y `SHA256SUMS`.
+Desde otro equipo autorizado use `http://IP_DE_LA_TABLET:8080`.
 
-## Restore
+## Cambio de red
+
+Si la tableta cambia de red/subred:
 
 ```bash
-sudo /opt/server-oficina/scripts/restore.sh /var/lib/server-oficina/backups/AAAAMMDD-HHMMSS
+sudo ./scripts/configurar-acceso-lan.sh
 ```
 
-## Gate de producción
+Revise reglas UFW anteriores antes de dejarlas acumuladas.
 
-Esta alpha **no se declara estable** hasta probar en Latitude física:
+## Backup / Restore
 
-- reinicio del SO;
-- acceso desde al menos PC + teléfono LAN;
-- importación con copias de archivos reales;
-- usuarios/permisos reales;
-- backup + restore completo;
-- comportamiento con pérdida/reinicio de red.
+```bash
+./BACKUP_SERVER_OFICINA.sh
+./RESTORE_SERVER_OFICINA.sh /srv/server-oficina/backups/server-oficina/AAAAMMDD-HHMMSS
+```
+
+No ejecute restore sobre datos reales sin confirmar el backup objetivo y una ventana de mantenimiento.

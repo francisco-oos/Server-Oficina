@@ -35,3 +35,20 @@ Se permiten backups/exportaciones de archivos, no replicación ingenua de Postgr
 ## No integrar HSE completo todavía
 
 Se conserva el contrato conceptual PDF + JSON cifrado + hash + fuente. La app existente sigue siendo una fuente futura; no debe bloquear la entrega de Oficina.
+
+
+## PostgreSQL nativo en `/var` para la Latitude actual
+
+**Descartado en alpha.2.** El host ya tiene `/var` pequeño y `/srv` dedicado. PostgreSQL permanece en Docker con datos en `/srv/server-oficina/data/postgres`.
+
+## Duplicar el Tracking Core con un segundo esquema paralelo
+
+**Descartado.** Las tablas funcionales existentes (`persons`, `employment_engagements`, `operational_events`, etc.) siguen siendo la autoridad. Las investigaciones de Asset Core se documentan hasta que llegue su versión.
+
+## Una columna `vida_util_restante` como verdad absoluta
+
+**Descartado.** Una estimación puede existir como observación versionada, pero la vida técnica depende de uso/condición/fallas/mantenimiento y resolución humana.
+
+## Publicar PostgreSQL a la LAN
+
+**Descartado.** El compose alpha.2 liga 5432 a `127.0.0.1` únicamente.

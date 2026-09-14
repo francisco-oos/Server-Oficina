@@ -43,3 +43,25 @@ Antes de tomar código de una referencia futura:
 4. justificar por qué aporta frente a implementación propia;
 5. añadir pruebas de comportamiento;
 6. registrar en CHANGELOG/NOTICE y este documento.
+
+
+## Investigación añadida en alpha.2
+
+| Fuente | Uso conceptual | Decisión |
+|---|---|---|
+| ISO 55000:2024 · https://www.iso.org/standard/83053.html | gestión del activo durante ciclo de vida, valor y objetivos | referencia conceptual; no se redistribuye texto normativo |
+| ISO 14224:2016 · https://www.iso.org/standard/64076.html | taxonomía de equipo/falla/mantenimiento/downtime | adaptar categorías útiles al dominio sísmico; no afirmar conformidad ISO |
+| ISO 17359:2018 · https://www.iso.org/standard/71194.html | estructura de programa de monitoreo de condición | usar como referencia para separar observación/diagnóstico/pronóstico |
+| ISO 13379-1:2025 · https://www.iso.org/standard/88027.html | interpretación de datos y diagnóstico de condición | referencia conceptual; no copiar texto normativo |
+| ISO 13381-1:2025 · https://www.iso.org/standard/88029.html | procesos de pronóstico y datos necesarios | RUL futuro con método/versión/confianza/procedencia, nunca verdad estática |
+| GS1 EPCIS 2.0 · https://www.gs1.org/standards/epcis | eventos de trazabilidad qué/cuándo/dónde/contexto | inspiración para contratos de evento; no dependencia |
+| HR Open Standards · https://www.hropenstandards.org/standards-downloads | vocabularios de persona/trabajo/organización e interoperabilidad | estudio; conservar modelo propio |
+| HROpen/APISpecifications `707ec7d3741df46f6973411e5dd75c756cf3d7d7` | Workers/Organizations/Jobs | estudio solamente; repo no declara licencia en metadata, revisar términos antes de copiar |
+| STPS SIRCE · https://www.gob.mx/stps/acciones-y-programas/stps-04-002-presentacion-de-listas-de-constancias-o-de-competencias-laborales | contexto de planes/cursos/constancias de capacitación | orientar campos/evidencia, no prometer cumplimiento ni envío automático |
+| NOM-017-STPS-2024 · https://dof.gob.mx/normasOficiales/9496/stps/stps.html | ciclo de EPP: selección, uso, revisión, reposición, mantenimiento, resguardo, disposición | informar roadmap EPP/Asset; sin motor legal automático |
+
+Detalle de investigación: `docs/12_INVESTIGACION_CICLO_VIDA_ACTIVOS.md` y `docs/13_INVESTIGACION_RRHH_OPERATIVO.md`.
+
+## Evidencia operativa interna
+
+La release sólo conserva metadatos y conclusiones de diseño de documentos propios revisados; no empaqueta sus datos sensibles. Ver `docs/18_EVIDENCIA_OPERATIVA_Y_TRAZABILIDAD_DE_FUENTES.md` y `references/internal_evidence.json`.

@@ -1,7 +1,7 @@
 [Unit]
-Description=Backup Server Oficina
+Description=Server Oficina - backup verificado
+After=docker.service server-oficina.service
 
 [Service]
 Type=oneshot
-User=root
-ExecStart=/opt/server-oficina/scripts/backup.sh
+ExecStart=/opt/server-oficina/current/scripts/backup.sh
