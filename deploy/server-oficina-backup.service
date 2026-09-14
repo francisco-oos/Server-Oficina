@@ -1,0 +1,7 @@
+[Unit]
+Description=Backup Server Oficina
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/opt/server-oficina/scripts/backup.sh

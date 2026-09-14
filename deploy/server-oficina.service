@@ -1,0 +1,22 @@
+[Unit]
+Description=Server Oficina - Adquisicion de Datos
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=serveroficina
+Group=serveroficina
+WorkingDirectory=/opt/server-oficina
+EnvironmentFile=/etc/server-oficina/server-oficina.env
+ExecStart=/opt/server-oficina/.venv/bin/python /opt/server-oficina/run.py
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/server-oficina /var/log/server-oficina
+
+[Install]
+WantedBy=multi-user.target

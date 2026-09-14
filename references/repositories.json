@@ -1,0 +1,17 @@
+{
+  "reviewed_on": "2026-09-10",
+  "policy": "reference_not_copy",
+  "repositories": [
+    {"name":"Formatos-HSE-Campo","url":"https://github.com/francisco-oos/Formatos-HSE-Campo","commit":"0786c7d5a9c26e32a3f6e06ed26be662bad21e7d","use":"future HSE evidence adapter","status":"own-reference"},
+    {"name":"SupervisionSeguraManage","url":"https://github.com/francisco-oos/SupervisionSeguraManage","commit":"abe5418b47d7b0e20818267a3f4be539075310e1","use":"evidence/provenance pattern","status":"own-reference"},
+    {"name":"Tendido-Diario-revision","url":"https://github.com/francisco-oos/Tendido-Diario-revision","commit":"42da7d48bc0d7e722c81b7c9a665e9b2f37993e2","use":"source reconciliation/history","status":"own-reference"},
+    {"name":"NodeHealthAnalyzer","url":"https://github.com/francisco-oos/NodeHealthAnalyzer","commit":"b7afbe41c0a7d7e458747e8afe271fc3c670d016","use":"node technical history","status":"own-reference"},
+    {"name":"EventEstudio","url":"https://github.com/francisco-oos/EventEstudio","commit":"a20066c2f5bb7b91d66434190bf10db1e4607334","use":"web security/testing/restore patterns","status":"own-reference"},
+    {"name":"Snipe-IT","url":"https://github.com/grokability/snipe-it","commit":"8d285d254fcb03aaa2111872e19aaca6e1030c67","license":"AGPL-3.0","use":"asset checkout/custody patterns","status":"study-only"},
+    {"name":"Ralph","url":"https://github.com/allegro/ralph","commit":"adbe619caba31425a6b28bd8913fed2500c2fd96","use":"asset lifecycle/CMDB patterns","status":"study-only"},
+    {"name":"GLPI","url":"https://github.com/glpi-project/glpi","commit":"5b3eadfa0a549877559e08e6e5a13047c380aace","use":"asset/location/incident patterns","status":"study-only"},
+    {"name":"OpenBoxes","url":"https://github.com/openboxes/openboxes","commit":"635b225b0dfc0d07619dad1a6583fbd9d803d5f4","use":"inventory movement patterns","status":"study-only"},
+    {"name":"node-casbin","url":"https://github.com/apache/casbin-node-casbin","commit":"aad42ce2be70908bbc76c5b89b505cf0655245e8","use":"policy engine comparison","status":"deferred"},
+    {"name":"full-stack-fastapi-template","url":"https://github.com/fastapi/full-stack-fastapi-template","commit":"cb740b656d7a0a6c5e12c7bf8e50343ec94ee9c7","use":"stack/testing architecture reference","status":"study-only"}
+  ]
+}
