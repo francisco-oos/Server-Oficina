@@ -84,3 +84,31 @@ Documentos reales de operación pueden justificar requisitos y decisiones, pero 
 ## ADR-018 · E2E de navegador es un gate distinto del chequeo estático
 
 `VALIDAR_FRONTEND.sh` comprueba sintaxis y contratos estructurales; `VALIDAR_FRONTEND_E2E.sh` comprueba un flujo visible real con navegador. Si el entorno carece de navegador/Playwright o una política administrada bloquea localhost, el gate informa `E2E_BLOCKED`: nunca se transforma un bloqueo en PASS.
+
+## ADR-016 · Tipos, tecnologías y ubicaciones como datos configurables
+
+No se codifican campamentos, marcas o familias futuras en condicionales. Los tipos declaran capacidades y las tecnologías/ubicaciones se administran en BD. Las semillas sólo facilitan el primer arranque.
+
+## ADR-017 · Snapshot actual + historial autoritativo
+
+`assets` contiene el estado actual para consultas rápidas; `asset_movements`, `asset_custody`, `node_operations` y la auditoría preservan cómo se llegó a ese estado. No se reconstruye historia a partir de un único campo mutable.
+
+## ADR-018 · Operaciones de nodos por lote
+
+TENDIDO/ROTACION/LEVANTADO/RETORNO se modelan como una operación con múltiples items. Cada equipo conserva su propia estaca origen/destino, resultado, responsable y transición. Esto refleja la operación de campo y evita cientos de ediciones aisladas sin contexto.
+
+## ADR-019 · NAS configurable e indexación sin mover originales
+
+El NAS no es hardcodeado ni la Latitude se convierte en almacén pesado. Server Oficina puede recibir archivos o indexar los que Windows/Organizador ya colocaron. SMB falla cerrado si el montaje desaparece. Credenciales de montaje quedan root-only fuera de la BD.
+
+## ADR-020 · Perfiles de negocio configurables, permisos técnicos versionados
+
+Los permisos (`nodes.operate`, `maintenance.manage`, etc.) son contratos de seguridad versionados. Los perfiles/roles de negocio pueden crearse y combinar esos permisos desde la UI. Se protege al último administrador para evitar bloqueo administrativo accidental.
+
+## ADR-021 · Cierre de proyecto como corte inmutable
+
+Cerrar un proyecto genera `project_closeouts.snapshot_json`. El corte no da de baja ni mueve activos automáticamente. Los equipos sobrevivientes se transfieren después mediante movimientos explícitos; el corte conserva lo que se sabía al cierre.
+
+## ADR-022 · Herramientas externas se estudian por patrón, no como sustituto
+
+Snipe-IT, GLPI/Ralph, OpenBoxes y referencias de mantenimiento sirven para contrastar custodia, inventario y mantenimiento. No se incrustan como núcleo ni se copia código incompatible; Server Oficina mantiene dominio propio de nodos, RRHH temporal y evidencia operacional.

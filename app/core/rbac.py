@@ -1,8 +1,13 @@
+# Permisos técnicos del sistema. Los perfiles/roles de negocio NO están
+# hardcodeados: un administrador puede crear roles nuevos y seleccionar estos
+# permisos desde la UI/API. Los roles de ROLE_MAP son semillas protegidas para
+# que una instalación nueva siempre tenga perfiles funcionales de partida.
 PERMISSIONS = {
     "dashboard.view": "Ver dashboard de Oficina",
     "person.view": "Consultar personal",
     "person.edit": "Alta/recontratación/cambios autorizados",
     "attendance.import": "Importar asistencia",
+    "attendance.manage": "Capturar/corregir asistencia manual",
     "imports.commit": "Confirmar importaciones",
     "epp.view": "Consultar EPP",
     "epp.request": "Solicitar cambio/reposición de EPP",
@@ -13,14 +18,55 @@ PERMISSIONS = {
     "cases.create": "Crear casos y evidencias",
     "cases.resolve": "Resolver casos como área competente",
     "projects.manage": "Administrar proyectos/grupos",
-    "users.manage": "Administrar usuarios y roles",
+    "users.manage": "Administrar usuarios",
+    "roles.manage": "Crear y editar perfiles/roles y sus permisos",
+    "catalogs.manage": "Administrar catálogos operativos configurables",
+    "organizations.manage": "Administrar empresas/outsourcing/proveedores",
+    "locations.manage": "Administrar campamentos, almacenes y ubicaciones",
+    "assets.view": "Consultar activos e inventario",
+    "assets.create": "Dar de alta activos y sus identificadores",
+    "assets.edit": "Editar metadatos vigentes de activos",
+    "assets.move": "Asignar, transferir, entregar y devolver activos",
+    "assets.bulk": "Carga masiva de activos",
+    "nodes.view": "Consultar tracking de nodos",
+    "nodes.operate": "Registrar tendido, rotación, levantado, retorno y excepciones",
+    "maintenance.view": "Consultar taller y mantenimiento",
+    "maintenance.manage": "Abrir/diagnosticar/cerrar mantenimiento",
+    "inventory.manage": "Abrir y capturar inventarios físicos",
+    "inventory.closeout": "Cerrar conciliaciones de inventario/proyecto",
+    "evidence.view": "Consultar evidencias vinculadas",
+    "evidence.manage": "Configurar repositorios y cargar evidencias",
     "audit.view": "Consultar auditoría",
 }
 
 ROLE_MAP = {
     "ADMIN": set(PERMISSIONS),
-    "OFFICE": {"dashboard.view", "person.view", "epp.view", "epp.request", "training.view", "cases.create"},
-    "HR": {"dashboard.view", "person.view", "person.edit", "attendance.import", "imports.commit", "epp.view", "epp.request", "epp.validate_hr", "training.view", "training.schedule_hr", "cases.create", "cases.resolve", "projects.manage"},
-    "HSE": {"dashboard.view", "person.view", "training.view", "training.confirm_hse", "cases.create"},
-    "SUPERVISOR": {"dashboard.view", "person.view", "epp.view", "epp.request", "training.view", "cases.create"},
+    "OFFICE": {
+        "dashboard.view", "person.view", "epp.view", "epp.request",
+        "training.view", "cases.create", "assets.view", "evidence.view",
+    },
+    "HR": {
+        "dashboard.view", "person.view", "person.edit", "attendance.import",
+        "attendance.manage", "imports.commit", "epp.view", "epp.request",
+        "epp.validate_hr", "training.view", "training.schedule_hr",
+        "cases.create", "cases.resolve", "projects.manage", "organizations.manage",
+    },
+    "HSE": {
+        "dashboard.view", "person.view", "training.view", "training.confirm_hse",
+        "cases.create", "evidence.view",
+    },
+    "SUPERVISOR": {
+        "dashboard.view", "person.view", "epp.view", "epp.request",
+        "training.view", "cases.create", "assets.view", "assets.move",
+        "nodes.view", "nodes.operate", "inventory.manage", "evidence.view",
+    },
+    "MATERIAL": {
+        "dashboard.view", "assets.view", "assets.create", "assets.edit",
+        "assets.move", "assets.bulk", "inventory.manage", "inventory.closeout",
+        "nodes.view", "evidence.view",
+    },
+    "TALLER": {
+        "dashboard.view", "assets.view", "nodes.view", "maintenance.view",
+        "maintenance.manage", "evidence.view",
+    },
 }

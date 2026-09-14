@@ -1,4 +1,4 @@
-# Seguridad · 0.1.0-alpha.2
+# Seguridad · 0.1.0-alpha.3
 
 ## Principios activos
 
@@ -8,6 +8,8 @@
 - permisos granulares por rol;
 - bootstrap admin sólo si no existen usuarios;
 - evidencia/importaciones con SHA-256 y nombre saneado;
+- uploads de evidencia en streaming (sin cargar archivos grandes completos en RAM), escritura temporal + promoción atómica;
+- indexación de archivos existentes impide escapar del repositorio mediante traversal (`..`/symlink resuelto);
 - servicio `systemd` sin privilegios (`serveroficina`), `NoNewPrivileges`, `ProtectSystem`, `ProtectHome`;
 - datos persistentes en `/srv/server-oficina`, fuera del código;
 - Docker/containerd en `/srv/docker`;

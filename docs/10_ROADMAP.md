@@ -1,72 +1,27 @@
 # 10 · Roadmap incremental
 
-## 0.1 · Oficina / Personal + Tracking Core
+## 0.1.0-alpha.2 — baseline físico
 
-Identidad, relación laboral, asistencia, grupos, EPP, capacitación, casos, evidencia, importación, dashboard, permisos, eventos y auditoría.
+Oficina/Personal + Tracking Core, empaquetado, iniciadores y despliegue en Latitude. Esta es la release actualmente usada como baseline estable antes de actualizar.
 
-### 0.1.0-alpha.2
+## 0.1.0-alpha.3 — base operacional integrada
 
-Endurecimiento de empaquetado/despliegue en Latitude, iniciadores, validación por capa y documentación de investigación. **No abre Asset Core antes de cerrar Oficina.**
+Incluye RRHH operativo ampliado, perfiles configurables, organizaciones, ubicaciones, Asset Core, identificadores, custodia, movimientos, Tracking Nodes, mantenimiento/partes/salud, inventario físico, cierre auditable de proyecto, evidencias NAS/SMB, tipos/tecnologías configurables, importación masiva de activos y UI profesional reorganizada.
 
-## 0.2 · Endurecimiento de Oficina/RRHH
+### Criterio para promover alpha.3
 
-- archivos reales;
-- resolución UI de issues de importación;
-- administración completa de proyectos/grupos;
-- roster trabajo/descanso y grupos quincenales;
-- responsable/supervisión temporal;
-- vigencia/evidencia de capacitación;
-- reportes;
-- frontend E2E;
-- exportaciones controladas.
+No basta compilar. Debe pasar suite, contratos frontend/deploy, smoke HTTP, integridad de manifiesto y revisión de paquete. El navegador E2E se registra separadamente si el entorno de construcción lo bloquea.
 
-## 0.3 · Control de Material / Asset Core
+## Próximas evoluciones después de alpha.3
 
-- activos genéricos e identificadores (serie/IMEI/QR/económico);
-- custodia, ubicación, proyecto y estado como periodos temporales;
-- check-in/out y movimientos;
-- medidores/uso;
-- observaciones de condición;
-- mantenimiento base;
-- cierre/conciliación de proyecto;
-- transferencia sin cambiar identidad.
-
-## 0.4 · Nodos / TX / Taller / vida útil
-
-- nodos como especialización de asset;
-- SERCEL/INOVA/Tendido Diario como fuentes;
-- NodeHealth como fuente de salud/RUL;
-- diagnóstico/falla/reparación/piezas/downtime;
-- hermeticidad/pruebas/hibernación/listo campo;
-- plantado/levantado/rotado/retorno;
-- daño/robo/extravío/incautación/no reparable.
-
-## 0.5 · Seguridad/HSE
-
-- cursos y vigencias;
-- Formatos HSE Campo/Supervisión Segura como adaptador;
-- PDF original + JSON cifrado + hash + QR/folio + fotos/evidencia;
-- línea/estaca/riesgo/evento;
-- no alterar evidencia original.
-
-## 0.6 · Transporte
-
-- unidad, económico/serie/documentos;
-- conductor y asignación temporal;
-- radio/teléfono vinculados;
-- checklist diario;
-- km/combustible;
-- PDF/fotos;
-- historial por proyecto.
-
-## 0.7 · Captura de campo offline y reconstrucción operacional
-
-- captura de clics/reglas versionadas tipo Operación de Campo;
-- store-and-forward local;
-- acuse/reintento e idempotencia;
-- no depender de Telegram como único transporte;
-- consulta por persona/activo/proyecto/línea-estaca/fecha reuniendo fuentes sin ocultar contradicciones.
+- adaptadores SERCEL/INOVA/Tendido Diario con reglas versionadas y conciliación de fuentes;
+- integración NodeHealth como fuente estructurada de health observations;
+- HSE: PDF/JSON cifrado/QR/fotos conservando original;
+- Transporte: checklist, km, combustible y evidencias;
+- captura de campo offline/store-and-forward;
+- reglas más ricas de documentos/vigencias y reportes;
+- migraciones versionadas cuando aparezcan cambios destructivos/ALTER.
 
 ## Principio permanente
 
-No avanzar cinco módulos al 40 %. Cerrar un bloque verificable, congelar contratos y agregar el siguiente.
+No abrir cinco módulos incompletos a la vez. Cada bloque debe mantener identidad, procedencia, historial, permisos, pruebas y documentación antes de darse por cerrado.

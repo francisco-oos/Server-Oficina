@@ -1,78 +1,118 @@
-# Test Results · 0.1.0-alpha.2
+# Test Results · 0.1.0-alpha.3
 
 Fecha de corte: 2026-09-11
 
 ## Resultado del paquete en entorno de construcción
 
+La suite actual ejecuta **27 pruebas automáticas** y valida el mismo monorepo que se empaqueta.
+
 ```text
-./scripts/verify-package.sh
-...........                                                              [100%]
+pytest -q
+...........................                                              [100%]
+
 BACKEND_OK
 FRONTEND_CONTRACT_OK
 FRONTEND_OK
 DEPLOY_CONTRACT_OK
 DEPLOY_OK
-PACKAGE_OK
 ```
 
-Cobertura del gate base:
+Cobertura principal de backend:
 
-- `pytest`: **11 passed**;
-- `compileall` de `app`, `tests` y `run.py`: OK;
-- sintaxis `app/static/app.js` con Node: OK;
-- contrato frontend: IDs/endpoints requeridos, sin CDN y sin dataset demo incrustado: OK;
-- sintaxis de scripts/iniciadores: OK;
-- contrato de despliegue PostgreSQL 18.6 + localhost 5432 + `/srv`: OK.
+- bootstrap/login/sesiones/RBAC;
+- creación de perfiles personalizados, edición de permisos y asignación a usuarios;
+- protección de perfiles base y del último administrador;
+- persona estable, altas, bajas, renuncia, despido y recontratación conservando `person_id`;
+- categoría, licencia/vigencia, rotación, supervisor, proyecto, grupo, ubicación y unidad;
+- asistencia manual e importada;
+- cursos, EPP y casos sin resolución automática de RRHH;
+- organizaciones/outsourcing normalizados;
+- Asset Core: NODE, RADIO, ANTENNA, PHONE, COMPUTER, DRONE, VEHICLE, SERVER y NAS;
+- identificadores serie/IMEI/QR/número económico y búsqueda por identificador;
+- tipos, tecnologías, estados y movimientos futuros agregables sin modificar lógica específica;
+- custodia, asignación, transferencia y localizador persona/activo;
+- Tracking Nodes por lote: TENDIDO → ROTACION → LEVANTADO → RETORNO;
+- excepciones DAMAGED/BURNED/MISSING/LOST/STOLEN/SEIZED/MAINTENANCE/HIBERNATED/NO_INFO;
+- recuperación y deshibernación;
+- taller/mantenimiento, piezas retiradas/instaladas, downtime y salud/RUL no autoritativa;
+- inventario físico, faltantes observados y conciliación;
+- carga masiva CSV de activos preservando columnas informativas como metadatos;
+- cierre auditable de material por proyecto y transferencia posterior sin reescribir el snapshot;
+- evidencias LOCAL/SMB, fail-closed, upload SHA-256, indexación de archivos ya existentes sin moverlos;
+- prevención de traversal fuera del repositorio de evidencias;
+- historia de aceptación transversal RRHH + material + nodos + taller + inventario + cierre.
 
-## Smoke real de proceso alpha.2
-
-Se levantó Uvicorn con SQLite temporal aislado en `127.0.0.1:18080` y se ejecutó `scripts/smoke.sh`.
+## Validaciones estáticas/contratos
 
 ```text
-GET /api/health       -> 200, version=0.1.0-alpha.2
-GET /api/setup/status -> 200, needs_setup=true
-GET /                 -> 200
-GET /static/app.js    -> 200
-GET /static/styles.css-> 200
+python3 -m compileall -q app tests run.py
+node --check app/static/app.js
+./VALIDAR_FRONTEND.sh
+./VALIDAR_DESPLIEGUE.sh
+```
+
+Resultado:
+
+```text
+FRONTEND_CONTRACT_OK
+FRONTEND_OK
+DEPLOY_CONTRACT_OK
+DEPLOY_OK
+```
+
+El contrato frontend verifica, entre otras cosas, que no existan rutas históricas/IP de campamento hardcodeadas ni datasets demo incrustados y que estén presentes los endpoints/vistas operativos de alpha.3.
+
+## Smoke HTTP real aislado
+
+Se levantó Uvicorn con una base SQLite temporal aislada y se verificó:
+
+```text
+GET /api/health        -> 200, version=0.1.0-alpha.3
+GET /api/setup/status  -> 200, needs_setup=true
+GET /                  -> 200
+GET /static/app.js     -> 200
+GET /static/styles.css -> 200
 SMOKE_OK
 ```
 
 ## Gate E2E de navegador
 
-Se añadió un recorrido Playwright reproducible (`VALIDAR_FRONTEND_E2E.sh`) para configuración inicial → login → dashboard → alta de persona → detalle → logout.
+`VALIDAR_FRONTEND_E2E.sh` incluye un recorrido reproducible:
 
-En **este entorno de construcción**, Chromium tiene una política administrada global `URLBlocklist=*`, por lo que la navegación a localhost es bloqueada por el navegador antes de que la aplicación pueda cargarse. El runner detecta la condición y devuelve de forma explícita:
+```text
+primer admin → login → dashboard → alta de persona → alta de nodo → TENDIDO → logout
+```
+
+En **este entorno de construcción**, Chromium está administrado con `URLBlocklist=["*"]`. La política bloquea localhost antes de cargar la aplicación, por lo que el runner devuelve explícitamente:
 
 ```text
 E2E_BLOCKED: Chromium tiene una política administrada URLBlocklist=*; ejecute este gate en la Latitude/QA host
 ```
 
-Por tanto, el E2E visual queda como gate físico y **no se declara PASS** en esta construcción.
+No se transforma ese bloqueo en un PASS ficticio. El gate queda preparado para ejecutarse en la Latitude instalada.
 
-## Evidencia ya validada en la Latitude durante la preparación del host
+## Evidencia física ya validada en la Latitude para la baseline alpha.2
 
-Esta evidencia proviene de la sesión de preparación física del servidor y no sustituye instalar alpha.2:
+Durante la preparación e instalación real del servidor se comprobó:
 
-- Debian 13/Xfce y SSH operativos;
-- UFW activo;
+- Debian 13/Xfce, SSH y UFW operativos;
 - suspensión/hibernación bloqueadas y pulsación corta de power ignorada;
 - Docker Engine/containerd sobreviven reboot y usan `/srv/docker`;
 - PostgreSQL 18.6 en contenedor `healthy`;
-- datos PostgreSQL persisten tras restart;
-- `pg_dump -Fc` creado;
-- `pg_restore` a una base temporal realizado correctamente;
-- base `server_oficina` quedó limpia después de retirar el esquema experimental paralelo.
+- persistencia PostgreSQL tras restart;
+- `pg_dump -Fc` y `pg_restore` a base temporal;
+- instalación versionada de alpha.2, `server-oficina.service`, timer de backup y acceso LAN;
+- primer administrador creado desde navegador.
 
-## Gates físicos que siguen pendientes para alpha.2
+## Gates físicos pendientes para alpha.3
 
-- `INSTALAR_EN_TABLETA.sh` completo sobre la release empaquetada;
-- app `server-oficina.service` después de reboot;
-- primer admin real desde navegador;
-- acceso LAN PC + teléfono;
-- `VALIDAR_FRONTEND_E2E.sh` en host sin política bloqueante;
-- archivo real de Oficina: preview/commit controlado;
-- roles HR/HSE/Supervisor con usuarios reales de prueba;
-- backup integral app+BD + restore integral de la release instalada;
-- estabilidad 24 h.
+La release sigue siendo **alpha** hasta cerrar en la Latitude/NAS real:
 
-La release conserva la clasificación **alpha** hasta cerrar esos gates.
+- actualización `alpha.2 → alpha.3` con backup pre-upgrade;
+- `/api/health` y rollback controlado de release;
+- E2E de navegador en la Latitude;
+- repositorio SMB/NAS real y credenciales fuera de PostgreSQL;
+- importación de archivos reales de Oficina/Material;
+- pruebas multiusuario por perfiles reales;
+- backup integral + restore integral después de operar alpha.3;
+- estabilidad prolongada y revisión visual del usuario.

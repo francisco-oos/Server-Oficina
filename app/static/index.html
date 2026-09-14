@@ -1,5 +1,67 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Server Oficina</title><link rel="stylesheet" href="/static/styles.css"></head><body>
-<div id="setup" class="center hidden"><form id="setupForm" class="card auth"><h1>Server Oficina</h1><p>Configuración inicial</p><input name="display_name" placeholder="Nombre del administrador" required><input name="username" placeholder="Usuario" required><input name="password" type="password" placeholder="Contraseña (mín. 10 caracteres)" required><button>Crear administrador</button><div class="msg"></div></form></div>
-<div id="login" class="center hidden"><form id="loginForm" class="card auth"><h1>Server Oficina</h1><p>Adquisición de Datos · Oficina</p><input name="username" placeholder="Usuario" required><input name="password" type="password" placeholder="Contraseña" required><button>Entrar</button><div class="msg"></div></form></div>
-<div id="app" class="hidden shell"><aside><div class="brand">Server Oficina <small>0.1.0 α2</small></div><nav><button data-view="dashboard" class="active">Dashboard</button><button data-view="people">Personal</button><button data-view="imports">Importaciones</button><button data-view="epp">EPP</button><button data-view="training">Capacitación</button><button data-view="cases">Casos</button><button data-view="users" id="usersNav">Usuarios</button></nav><div class="user"><span id="who"></span><button id="logout" class="secondary">Salir</button></div></aside><main><header><h1 id="title">Dashboard</h1><span class="pill">Tracking Core · Oficina</span></header><section id="content"></section></main></div>
-<script src="/static/app.js"></script></body></html>
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Server Oficina</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<div id="setup" class="center hidden">
+  <form id="setupForm" class="card auth">
+    <div class="auth-mark">SO</div><h1>Server Oficina</h1><p>Configuración inicial del servidor operativo</p>
+    <input name="display_name" placeholder="Nombre del administrador" minlength="2" required>
+    <input name="username" placeholder="Usuario" minlength="3" required>
+    <input name="password" type="password" placeholder="Contraseña (mín. 10 caracteres)" minlength="10" required>
+    <button>Crear administrador</button><div class="msg"></div>
+  </form>
+</div>
+<div id="login" class="center hidden">
+  <form id="loginForm" class="card auth">
+    <div class="auth-mark">SO</div><h1>Server Oficina</h1><p>Adquisición de Datos · Control operativo</p>
+    <input name="username" placeholder="Usuario" required><input name="password" type="password" placeholder="Contraseña" required>
+    <button>Entrar</button><div class="msg"></div>
+  </form>
+</div>
+<div id="app" class="hidden shell">
+  <aside>
+    <div class="brand"><div class="logo">SO</div><div><strong>Server Oficina</strong><small>0.1.0 α3</small></div></div>
+    <nav>
+      <div class="nav-group"><span>OPERACIÓN</span>
+        <button data-view="dashboard" class="active">▦ Dashboard</button>
+        <button data-view="locate">⌕ Localizar</button>
+        <button data-view="assets">▣ Activos y Nodos</button>
+        <button data-view="nodes">⌁ Tracking Nodes</button>
+        <button data-view="maintenance">⚙ Taller / Mantenimiento</button>
+        <button data-view="inventory">✓ Inventario físico</button>
+        <button data-view="evidence">⬆ Evidencias</button>
+      </div>
+      <div class="nav-group"><span>OFICINA</span>
+        <button data-view="people">♙ Personal</button>
+        <button data-view="attendance">◷ Asistencia</button>
+        <button data-view="imports">⇧ Importaciones</button>
+        <button data-view="epp">◇ EPP</button>
+        <button data-view="training">△ Capacitación</button>
+        <button data-view="cases">! Casos</button>
+      </div>
+      <div class="nav-group"><span>ADMINISTRACIÓN</span>
+        <button data-view="projects">▤ Proyectos y ubicaciones</button>
+        <button data-view="roles">⌘ Perfiles y permisos</button>
+        <button data-view="catalogs">☷ Catálogos</button>
+        <button data-view="users" id="usersNav">♧ Usuarios</button>
+        <button data-view="audit">≡ Auditoría</button>
+      </div>
+    </nav>
+    <div class="user"><span id="who"></span><button id="logout" class="secondary">Cerrar sesión</button></div>
+  </aside>
+  <main>
+    <header>
+      <div><div class="eyebrow">CONTROL OPERATIVO</div><h1 id="title">Dashboard de Oficina</h1></div>
+      <div class="header-actions"><span class="pill">Tracking Core · α3</span></div>
+    </header>
+    <section id="content"></section>
+  </main>
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>

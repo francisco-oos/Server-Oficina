@@ -62,30 +62,28 @@ La auditoría interna distingue tres preguntas que Server Oficina debe mantener 
 - estado de salud (SOH) de batería;
 - riesgo de falla/reemplazo o pronóstico.
 
-También concluye que la extrapolación lineal de voltaje disponible en ese prototipo es **experimental** y no equivale a vida útil validada; los datos faltantes no deben convertirse en falla, y cualquier aprendizaje necesita verdad de campo, versión de reglas/modelo, decisión experta y resultado posterior. Estas conclusiones pasan a ser restricciones explícitas del futuro adaptador `NodeHealthAnalyzer → Server Oficina`.
+También concluye que la extrapolación lineal de voltaje disponible en ese prototipo es **experimental** y no equivale a vida útil validada; los datos faltantes no deben convertirse en falla, y cualquier aprendizaje necesita verdad de campo, versión de reglas/modelo, decisión experta y resultado posterior. Estas conclusiones son restricciones explícitas del adaptador `NodeHealthAnalyzer → Server Oficina`. Alpha.3 ya puede almacenar observaciones SOH/RUL/health score con fuente y confianza; la ingestión automática especializada desde NodeHealth sigue siendo posterior.
 
 ### Procedimiento de control de inventario de equipo sísmico
 
-El material de capacitación operativa confirma patrones que el futuro módulo de activos debe representar sin cambiar el proceso real: entrega por responsables definidos, conteo al recibir, conciliación de material que salió contra sobrante/retornado, registro de serie/tipo plantado o levantado, estados excepcionales como incautado/no encontrado/siniestrado, anomalía reportada por campo y confirmación mediante bitácora de entrega/recepción.
+El material de capacitación operativa confirma patrones que Asset Core debe representar sin cambiar el proceso real: entrega por responsables definidos, conteo al recibir, conciliación de material que salió contra sobrante/retornado, registro de serie/tipo plantado o levantado, estados excepcionales como incautado/no encontrado/siniestrado, anomalía reportada por campo y confirmación mediante bitácora de entrega/recepción.
 
 **Consecuencia:** la custodia no será un campo `responsable_actual` sobrescribible. Será una secuencia de entregas/recepciones/conciliaciones firmadas o validadas, de la cual se deriva el responsable actual.
 
-## Modelo futuro recomendado (NO activo en alpha.2)
+## Modelo de referencia y correspondencia con alpha.3
 
 ```text
-assets
-asset_identifiers        serie / IMEI / QR / económico / fabricante
-asset_project_periods    participación temporal en proyecto
-asset_custody_periods    persona/grupo/área responsable
-asset_location_periods   almacén/campamento/campo/taller
-asset_status_periods     disponible/asignado/mantenimiento/dañado/etc.
-asset_meter_readings     horas/ciclos/km/rotaciones según clase
-asset_health_observations fuente, métrica, valor, unidad, confianza
-maintenance_work_orders  apertura/cierre/prioridad/tipo
-maintenance_actions      acción, resultado, recursos, downtime
-component_replacements   componente retirado/instalado
-asset_events             historia transversal compatible con Tracking Core
-project_asset_closure    conciliación al cierre del proyecto
+assets                     identidad y estado vigente del activo
+asset_identifiers             serie / IMEI / QR / económico / identificadores futuros
+asset_custody                 periodos de custodia persona/grupo
+asset_movements               cambios de proyecto/ubicación/estado/custodia
+asset_health_observations     SOH/RUL/score/fuente/confianza
+maintenance_orders            apertura/cierre/prioridad/diagnóstico/acción/downtime
+maintenance_parts             componente/serial retirado e instalado
+node_operations/items         operación por lote + línea/estaca/participantes/resultados
+inventory_sessions/counts     conteo físico y faltantes observados
+project_closeouts             snapshot auditable al cierre del proyecto
+operational_events            historia transversal compatible con Tracking Core
 ```
 
 Cada tabla especializada conserva semántica de dominio; `operational_events` sigue siendo la historia transversal. No se reemplaza todo por JSON genérico.

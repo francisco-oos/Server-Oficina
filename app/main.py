@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from app import __version__
 from app.api.routes import router
 from app.db.base import Base, SessionLocal, engine
-from app.services.bootstrap import ensure_rbac
+from app.services.bootstrap import ensure_operational_catalogs, ensure_rbac
 
 
 @asynccontextmanager
@@ -18,6 +18,7 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     with SessionLocal() as db:
         ensure_rbac(db)
+        ensure_operational_catalogs(db)
     yield
 
 

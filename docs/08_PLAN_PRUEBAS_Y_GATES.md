@@ -1,78 +1,52 @@
-# 08 · Plan de pruebas y gates — alpha.2
+# 08 · Plan de pruebas y gates — alpha.3
 
-## Suite heredada y revalidada
+## Gate base
 
-```text
-pytest: 11 passed
-compileall: OK
-node --check app/static/app.js: OK
-bash -n scripts/launchers: OK
-```
+`VALIDAR_SERVER_OFICINA.sh` ejecuta validación de backend, frontend, despliegue e integridad. El E2E de navegador es un gate separado porque requiere Playwright/Chromium real.
 
-## Validadores separados
+## Backend
 
-```bash
-./scripts/verify-backend.sh
-./scripts/verify-frontend.sh
-./scripts/verify-deploy.sh
-./VALIDAR_SERVER_OFICINA.sh
-```
+La suite final de construcción contiene **27 pruebas** y cubre, entre otros:
 
-### Backend
+- bootstrap/login/RBAC y protección del último ADMIN;
+- identidad persona→baja/rehire;
+- categoría, licencia/vigencia, rotación, asistencia;
+- cursos, EPP y casos sin sanción automática;
+- empresas/outsourcing normalizados;
+- activos con serie/IMEI/QR/económico;
+- tipos/tecnologías/estados futuros creados sin modificar Python;
+- custodia y localizador;
+- TENDIDO→ROTACION→LEVANTADO→RETORNO;
+- DAMAGED/BURNED/MISSING/LOST/STOLEN/SEIZED/MAINTENANCE/HIBERNATED/NO_INFO;
+- mantenimiento, piezas, downtime y RUL no-autoritativo;
+- inventario físico y faltantes;
+- importación masiva con metadata extra;
+- evidencias locales, SMB fail-closed e indexación de archivo ya existente;
+- cierre auditable de proyecto y transferencia posterior sin reescribir snapshot;
+- historia de aceptación transversal RRHH + material + nodos + taller + inventario + cierre.
 
-- health;
-- bootstrap admin;
-- usuario con rol;
-- identidad estable/rehire;
-- baja y recontratación por API;
-- EPP supervisor solicita pero no valida;
-- HR/Admin valida;
-- importación XLSX PREVIEW→COMMIT + SHA;
-- capacitación RRHH→HSE;
-- caso sin sanción automática + resolución humana;
-- reporte tardío `occurred_at` vs `recorded_at`.
+## Frontend
 
-### Frontend
+- `node --check app/static/app.js`;
+- contrato estructural y endpoints mínimos;
+- errores FastAPI legibles (no `[object Object]`);
+- sin CDN;
+- sin rutas históricas/IP de campamento hardcodeadas;
+- formularios para Asset Core, Node Tracking, mantenimiento, inventario, evidencias, tipos/tecnologías, perfiles y corte de proyecto.
 
-- sintaxis JavaScript;
-- IDs estructurales requeridos;
-- contratos API mínimos presentes;
-- ausencia de dependencias CDN en `index.html`;
-- ausencia de datos demo incrustados conocidos.
+## Despliegue
 
-Esto **no reemplaza E2E en navegador real**.
+- sintaxis shell de operadores e instaladores;
+- PostgreSQL 18.6 en Docker con persistencia `/srv` y bind loopback;
+- app host `systemd`;
+- backup pre-upgrade antes de promover release;
+- rollback de symlink si health falla;
+- scripts SMB guardan credenciales root-only.
 
-### Despliegue
+## Navegador E2E
 
-- sintaxis de todos los operadores shell;
-- contrato compose: PostgreSQL 18.6, bind localhost 5432 y persistencia `/srv`;
-- service unit bajo usuario sin privilegios.
+`VALIDAR_FRONTEND_E2E.sh` recorre primer administrador, login, dashboard, alta de persona, alta de nodo, TENDIDO y logout. Si el entorno bloquea Chromium, debe reportar `E2E_BLOCKED`; no se convierte en PASS ficticio.
 
-## Evidencia física ya conseguida durante preparación del host
+## Gates físicos ya verificados en la Latitude con alpha.2
 
-- Docker/containerd arrancan después de reboot;
-- Docker y containerd almacenan en `/srv/docker`;
-- PostgreSQL 18.6 healthy;
-- persistencia después de restart;
-- pg_dump custom;
-- pg_restore a base temporal.
-
-## Gates pendientes antes de llamar 0.1 estable
-
-- [ ] `INSTALAR_EN_TABLETA.sh` completo;
-- [ ] app systemd tras reboot;
-- [ ] bootstrap admin real;
-- [ ] acceso PC + teléfono LAN;
-- [ ] copia de Excel real Oficina: preview;
-- [ ] resolver una ambigüedad/recontratación real;
-- [ ] permisos HR/HSE/Supervisor reales;
-- [ ] backup integral app+BD y restore integral;
-- [ ] navegador E2E real;
-- [ ] revisión de permisos/datos sensibles;
-- [ ] estabilidad 24 h sin suspensión.
-
-## Gate E2E de navegador
-
-Se incluye `VALIDAR_FRONTEND_E2E.sh` / `scripts/verify-frontend-e2e.sh`. Arranca una instancia aislada con SQLite temporal y usa Playwright + Chromium/Chrome para recorrer: configuración inicial, login, dashboard, alta de persona, detalle y logout.
-
-Este gate es adicional al contrato estático y al smoke HTTP. Si la máquina de validación carece de Playwright o navegador compatible, debe reportarse `E2E_BLOCKED`, nunca fingir PASS. El entorno de construcción de alpha.2 tiene Chromium administrado con `URLBlocklist=*`, por lo que el navegador local bloquea localhost; el runner quedó preparado para ejecutarse en la Latitude/QA host sin esa política.
+Instalación de alpha.2, primer administrador, acceso LAN, `server-oficina.service`, PostgreSQL/Docker en `/srv`, UFW y operación web fueron comprobados durante la sesión real. Alpha.3 aún debe instalarse como actualización después de la supervisión del paquete.

@@ -1,37 +1,39 @@
-# 14 · Matriz de requisitos y estado
+# 14 · Matriz de requisitos y estado — alpha.3
 
-| Requisito acordado | Estado alpha.2 | Implementación / siguiente paso |
+| Requisito acordado | Estado | Evidencia alpha.3 |
 |---|---|---|
-| Persona estable aunque cambie ID laboral | IMPLEMENTADO | `persons` + `employment_engagements` |
-| Baja y recontratación | IMPLEMENTADO | API + eventos + pruebas |
-| Outsourcing/renovaciones | BASE IMPLEMENTADA | `provider` + `contract_periods`; normalización de organizaciones queda futura |
-| Proyectos | IMPLEMENTADO base | `projects`; cierre auditable se completa con Asset Core |
-| Grupos/cuadrillas temporales | IMPLEMENTADO base | `work_groups` + `group_assignments` |
-| Asistencia desde Excel/CSV | IMPLEMENTADO base | PREVIEW→COMMIT + SHA + issues |
-| Buscar persona por nombre/ID | IMPLEMENTADO | directorio/API/UI |
-| EPP solicitud vs validación RRHH | IMPLEMENTADO | RBAC + `epp_requests`/`epp_history` |
-| Capacitación RRHH→HSE | IMPLEMENTADO base | vigencia/documentos en 0.2 |
-| Casos/evidencia sin sanción automática | IMPLEMENTADO | permisos separados |
-| `occurred_at` vs `recorded_at` | IMPLEMENTADO | `operational_events` |
-| Auditoría | IMPLEMENTADO base | `audit_log` |
-| Importación conserva original y hash | IMPLEMENTADO | `/srv/.../data/app/imports` en despliegue |
-| Backend/frontend verificables por separado | IMPLEMENTADO en alpha.2 | scripts `verify-*` |
-| Iniciar/detener/estado/logs simples | IMPLEMENTADO en alpha.2 | iniciadores raíz |
-| PostgreSQL/Docker en `/srv` | IMPLEMENTADO despliegue alpha.2 | no usar PostgreSQL nativo en `/var` |
-| Backup/restore | IMPLEMENTADO + infraestructura validada | gate integral de app pendiente |
-| Localizar persona: grupo/responsable/unidad/radio/teléfono/campamento | PARCIAL | persona/grupo ya; resto entra por módulos temporales, sin duplicar |
-| Control Material / Asset Core | DISEÑADO/INVESTIGADO | 0.3 |
-| Vida útil/mantenimiento | DISEÑADO/INVESTIGADO | 0.3/0.4, con NodeHealth como fuente |
-| Nodo TX/Taller/campo | DISEÑADO | 0.4; identidad de nodo = asset |
-| HSE Campo PDF/JSON/QR | ADAPTADOR DISEÑADO | 0.5; conservar original + cifrado + hash |
-| Transporte/checklist/km/combustible/fotos | DISEÑADO | 0.6 |
-| Cierre de proyecto y transferencia de activos | DISEÑADO | Asset Core + conciliación |
-| Captura de campo offline tipo Operación de Campo | FUTURO | reglas versionadas + cola offline/acuse; no depender de Telegram |
+| Persona estable aunque cambie ID laboral | IMPLEMENTADO/PROBADO | person + engagements + rehire |
+| Renuncia/despido/rehire | IMPLEMENTADO/PROBADO | lifecycle events + suite |
+| Outsourcing/empresa normalizados | IMPLEMENTADO BASE/PROBADO | organizations + engagement links; `provider` legado compatible |
+| Categoría/licencia/vigencia/rotación | IMPLEMENTADO/PROBADO | `person_hr_profiles` |
+| Asistencia | IMPLEMENTADO/PROBADO | manual + importación heredada |
+| Cursos/EPP/casos | IMPLEMENTADO/PROBADO | flujos heredados + suite |
+| Proyectos/grupos/ubicaciones configurables | IMPLEMENTADO/PROBADO | sin campamentos hardcodeados |
+| Perfiles creados por administrador | IMPLEMENTADO/PROBADO | role↔permission dinámico |
+| Tipos/tecnologías futuras sin editar código | IMPLEMENTADO/PROBADO | capacidades + tecnología configurable |
+| Alta de radios/teléfonos/PC/drones/vehículos/nodos | IMPLEMENTADO/PROBADO | Asset Core |
+| Serie/IMEI/QR/económico | IMPLEMENTADO/PROBADO | asset_identifiers |
+| Custodia/asignación/localizador | IMPLEMENTADO/PROBADO | custody + assignment + `/locate` |
+| Tendido/rotación/levantado/retorno | IMPLEMENTADO/PROBADO | node operations por lote |
+| Quemado/incautado/perdido/robado/no encontrado/etc. | IMPLEMENTADO/PROBADO | resultado→movimiento por catálogo |
+| Taller/mantenimiento/piezas/downtime | IMPLEMENTADO/PROBADO | maintenance orders/parts |
+| SOH/RUL sin baja automática | IMPLEMENTADO/PROBADO | health observations |
+| Inventario físico y material faltante | IMPLEMENTADO/PROBADO | inventory sessions/counts |
+| Carga masiva de activos + metadata adicional | IMPLEMENTADO/PROBADO | preview/commit CSV |
+| Cierre de proyecto auditable | IMPLEMENTADO/PROBADO | project_closeouts snapshot |
+| Transferencia posterior conserva corte previo | IMPLEMENTADO/PROBADO | prueba de snapshot inmutable |
+| Evidencia upload a repositorio | IMPLEMENTADO/PROBADO | SHA-256 + relación |
+| Evidencia ya copiada por Windows/NAS | IMPLEMENTADO/PROBADO | register-existing sin mover original |
+| SMB fail-closed | IMPLEMENTADO/PROBADO | 503 si mount ausente |
+| Credenciales NAS fuera de BD | IMPLEMENTADO DEPLOY | root-only `/etc/server-oficina` |
+| UI profesional por dominios | IMPLEMENTADO BASE | navegación Operación/Oficina/Admin |
+| Backend/frontend/deploy verificables por separado | IMPLEMENTADO | validadores raíz/scripts |
+| Backup pre-upgrade y rollback release | IMPLEMENTADO CONTRACT | installer alpha.3; gate físico pendiente al actualizar |
+| SERCEL/INOVA parser avanzado | PARCIAL | destino preparado; adaptadores especializados posteriores |
+| HSE Campo PDF/JSON/QR | DISEÑADO COMO ADAPTADOR | no duplicar evidencia original |
+| Transporte checklist/km/combustible | FUTURO | Asset Core ya modela unidad/custodia |
+| Captura offline tipo Operación de Campo | FUTURO | store-and-forward/reglas versionadas |
 
-## Regla de avance
+## Regla
 
-No marcar `IMPLEMENTADO` por tener sólo una tabla o una pantalla. El estado cambia cuando existen: contrato de datos + API/UI necesaria + pruebas + documentación + gate físico cuando corresponda.
-
-## Evidencia y procedencia
-
-La clasificación de fuentes y evidencia interna se mantiene en `docs/18_EVIDENCIA_OPERATIVA_Y_TRAZABILIDAD_DE_FUENTES.md` y `references/internal_evidence.json`. Ningún documento interno se empaqueta con datos sensibles.
+`IMPLEMENTADO/PROBADO` significa contrato de datos + API/regla necesaria + prueba automática. Un gate físico se declara aparte cuando dependa de la Latitude/NAS/navegador real.

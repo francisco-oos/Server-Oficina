@@ -1,55 +1,75 @@
-# 06 · Modelo de datos 0.1
+# 06 · Modelo de datos vigente — 0.1.0-alpha.3
 
 ## Identidad y acceso
 
-- `users`
-- `roles`
-- `permissions`
-- `user_roles`
-- `role_permissions`
-- `session_tokens`
+`users`, `roles`, `permissions`, `user_roles`, `role_permissions`, `session_tokens`.
 
-Las sesiones son opacas y revocables; la cookie contiene el token bruto y la BD sólo su SHA-256.
+Roles de negocio son configurables; permisos técnicos son contratos versionados. Las sesiones son opacas/revocables y la BD conserva el hash del token.
 
-## Organización
+## RRHH / organización
 
-- `projects`: contexto operacional;
 - `persons`: identidad humana estable;
-- `employment_engagements`: alta/recontratación + ID laboral de ese periodo;
-- `contract_periods`: renovaciones/periodos, especialmente outsourcing;
-- `work_groups`;
-- `group_assignments`: pertenencia temporal.
+- `employment_engagements`: alta/recontratación e ID laboral del periodo;
+- `contract_periods`: renovaciones;
+- `organizations` + `engagement_organization_links`: empresa/outsourcing/contratista normalizados sin eliminar compatibilidad con `provider` legado;
+- `person_hr_profiles`: categoría, licencia/vigencia, rotación y datos operativos;
+- `projects`, `work_groups`, `group_assignments`, `locations`, `person_assignments`;
+- `attendance_records`, `employment_lifecycle_events`;
+- EPP, capacitación, casos/evidencia heredados.
 
-## Oficina
+## Asset Core
 
-- `attendance_records`;
-- `epp_requests`;
-- `epp_history`;
-- `training_courses`;
-- `training_records`;
-- `cases`;
-- `evidence`.
+- `asset_types`: tipo configurable + capacidades;
+- `asset_technologies`: tecnología/fabricante configurable;
+- `assets`: identidad permanente + snapshot actual;
+- `asset_identifiers`: serie/IMEI/QR/económico/otros;
+- `asset_custody`: periodos de custodia;
+- `asset_movements`: historia autoritativa de movimientos.
 
-## Trazabilidad
+## Tracking Nodes
 
-- `operational_events`: evento transversal con `occurred_at`, `recorded_at`, proyecto, fuente y payload;
-- `audit_log`: quién cambió qué entidad y cuándo;
-- `import_batches`: archivo original, SHA-256, preview/commit;
-- `import_issues`: ambigüedades/conflictos que requieren revisión.
+- `node_operations`: operación/lote;
+- `node_operation_items`: equipo individual, estacas, resultado, responsable y estados antes/después.
 
-## Invariantes
+El nombre del tipo no habilita Tracking Nodes; lo habilita la capacidad `node_field`.
 
-1. una recontratación crea `employment_engagement`, no otra `person`;
-2. un cambio de grupo cierra la asignación anterior y crea otra;
-3. una solicitud EPP no actualiza historial oficial hasta validación RRHH;
-4. un caso abierto no implica sanción;
-5. `occurred_at` y `recorded_at` nunca se confunden;
-6. una importación no modifica datos durante PREVIEW;
-7. el archivo original se conserva con hash.
+## Taller / condición
 
+- `maintenance_orders`;
+- `maintenance_parts`;
+- `asset_health_observations`.
 
-## Límites alpha.2
+Una observación de salud/RUL no ejecuta una transición de estado.
 
-No se agregan tablas paralelas de activos ni otro schema `core`. La fuente funcional sigue siendo el modelo SQLAlchemy existente. Los modelos futuros de Asset Core/roster/vigencia de cursos están documentados, no activos.
+## Inventario y cierre de proyecto
 
-Cuando se implemente una evolución de esquema con datos reales, se deberá introducir un mecanismo explícito de migraciones versionadas antes de modificar columnas/tablas existentes; `create_all` sólo cubre bootstrap/adiciones iniciales y no sustituye migraciones de producción.
+- `inventory_sessions` + `inventory_counts`: conteo físico y faltantes observados;
+- `project_closeouts`: snapshot auditable al cierre del proyecto; no mueve material automáticamente.
+
+## Evidencias
+
+- `evidence_repositories`: LOCAL/SMB, mount y URI canónica;
+- `evidence_records`: relación, ruta relativa, SHA-256, tamaño, MIME, procedencia y fechas.
+
+Un archivo existente en NAS puede indexarse sin moverlo. Las credenciales SMB no forman parte del modelo de negocio.
+
+## Trazabilidad transversal
+
+`operational_events`, `audit_log`, `import_batches` e `import_issues` conservan hechos, procedencia, actor y ambigüedades.
+
+## Invariantes principales
+
+1. recontratar no crea otra persona;
+2. transferir de proyecto no crea otro activo;
+3. estado actual nunca borra movimiento anterior;
+4. `occurred_at` y `recorded_at` no se confunden;
+5. preview de importación no modifica datos;
+6. inventario faltante no equivale automáticamente a pérdida;
+7. predicción/RUL no retira un activo;
+8. evidencia y resolución humana permanecen separadas;
+9. cierre de proyecto guarda snapshot y transferencia posterior como evento separado;
+10. ubicaciones, tecnologías, perfiles y vocabularios operativos no se hardcodean como universo cerrado.
+
+## Evolución de esquema
+
+Alpha.3 añade tablas sin alterar columnas heredadas, por lo que `create_all()` puede materializar este incremento. En cuanto una release necesite `ALTER`, transformación o eliminación de datos, se debe introducir migración versionada explícita antes de desplegarla.

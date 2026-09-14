@@ -1,53 +1,23 @@
 # 11 · Estado real de la Latitude — 2026-09-11
 
-Este documento registra hechos verificados durante la preparación física del host. No sustituye los gates de la aplicación.
+## Host ya verificado
 
-## Host
+Dell Latitude 7220 Rugged Extreme, Debian 13/Xfce mínimo, hostname `server-oficina`, SSH y UFW activos, NTP `America/Mexico_City`, suspensión/hibernación bloqueadas y pulsación corta de encendido ignorada.
 
-- equipo: Dell Latitude 7220 Rugged Extreme, 8 GiB RAM;
-- hostname: `server-oficina`;
-- SO: Debian 13 Trixie amd64 con Xfce mínimo;
-- SSH activo;
-- UFW activo: entrada denegada por defecto y SSH permitido;
-- zona horaria: `America/Mexico_City`, NTP sincronizado;
-- suspensión, hibernación y hybrid-sleep enmascarados;
-- pulsación corta del botón de encendido configurada como `ignore` para evitar apagados accidentales.
+El VG interno conserva `serer-ficina-ADQ-vg` por estabilidad; no tiene significado funcional.
 
-## Almacenamiento
+## Almacenamiento y contenedores
 
-- raíz `/`: volumen LVM pequeño para sistema;
-- `/var`: volumen pequeño, por lo que **no debe alojar Docker/PostgreSQL de negocio**;
-- `/srv`: volumen principal (~86 GiB en el momento de preparación);
-- VG interno heredado conserva el nombre `serer-ficina-ADQ-vg`; se mantiene por estabilidad de arranque y no tiene significado funcional.
+`/var` es pequeño y no aloja datos pesados. `/srv` es el volumen de negocio. Docker Engine usa `/srv/docker/engine` y containerd `/srv/docker/containerd`; ambos fueron comprobados tras reinicio.
 
-## Docker
+PostgreSQL 18.6 corre como `server-oficina-postgres`, persiste en `/srv/server-oficina/data/postgres`, está ligado a loopback para la app y superó persistencia, `pg_dump` y restauración temporal.
 
-- Docker Engine instalado desde repositorio oficial;
-- Docker Root: `/srv/docker/engine`;
-- containerd root: `/srv/docker/containerd`;
-- Docker Compose plugin operativo;
-- prueba `hello-world` aprobada antes y después de reinicio.
+## Alpha.2 instalada físicamente
 
-## PostgreSQL físico
+Durante la sesión real se instaló `0.1.0-alpha.2` mediante release versionada, pasó `PACKAGE_OK`, creó `server-oficina.service`/timer de backup, respondió `/api/health`, habilitó acceso LAN 8080 por UFW y permitió crear el primer administrador desde navegador.
 
-- imagen: PostgreSQL 18.6;
-- contenedor: `server-oficina-postgres`;
-- base: `server_oficina`;
-- usuario: `serveroficina`;
-- persistencia: `/srv/server-oficina/data/postgres:/var/lib/postgresql`;
-- health: aprobado;
-- persistencia tras reinicio: aprobada;
-- `pg_dump` custom: aprobado;
-- `pg_restore` a base temporal: aprobado.
+También se detectó y documentó el defecto visual `[object Object]` ante validación 422; alpha.3 corrige la serialización de errores y `minlength` en UI.
 
-## Qué falta validar todavía en host
+## Estado de alpha.3
 
-- instalación de esta alpha.2;
-- arranque `systemd` de la aplicación tras reboot;
-- bootstrap del primer administrador;
-- acceso LAN real desde PC/teléfono;
-- importación de copia de Excel real;
-- flujo real de baja/rehire;
-- permisos RRHH/HSE/Supervisor;
-- backup integral de BD + archivos y restore integral;
-- navegador E2E real.
+Alpha.3 se construye como actualización aditiva y **no se considera instalada físicamente todavía**. Su instalador hace backup pre-upgrade, conserva la release previa y revierte el symlink `current` si la nueva app no pasa health.

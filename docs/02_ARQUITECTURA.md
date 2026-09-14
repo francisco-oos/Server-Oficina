@@ -1,12 +1,8 @@
-# 02 · Arquitectura
+# 02 · Arquitectura vigente — alpha.3
 
 ## Decisión principal
 
-**Monolito modular** sobre una fuente de verdad PostgreSQL.
-
-Se evita comenzar con microservicios en una Latitude 7220 i3/8 GB. El aislamiento se logra por contratos, módulos, permisos y fronteras de datos; un módulo pesado podrá extraerse a un servicio independiente cuando exista una necesidad demostrada.
-
-## Capas
+**Monorepo + monolito modular** sobre PostgreSQL. La Latitude 7220 no necesita microservicios para resolver este dominio; las fronteras se mantienen mediante módulos, permisos, contratos de datos y pruebas.
 
 ```text
 Navegador LAN
@@ -14,66 +10,62 @@ Navegador LAN
    ▼
 FastAPI + UI web estática
    │
-   ├── Auth / RBAC
-   ├── Oficina / Personal (entrega actual)
+   ├── Auth / RBAC dinámico
+   ├── RRHH / Oficina
+   ├── Asset Core / inventario
+   ├── Tracking Nodes por lote
+   ├── Taller / mantenimiento / salud
+   ├── Evidencias / NAS
    ├── Importaciones
-   ├── EPP
-   ├── Capacitación
-   ├── Casos / Evidencias
-   └── Tracking Core
-          ├── identidad permanente
-          ├── relaciones temporales
-          ├── proyectos
-          ├── eventos
-          ├── procedencia
-          ├── auditoría
-          └── evidencias
+   └── Tracking Core / auditoría
    │
    ▼
-PostgreSQL 18.6 (Docker) + /srv/server-oficina
+PostgreSQL 18.6 (Docker)
+   │
+   └── datos persistentes en /srv/server-oficina
 ```
 
 ## Tracking Core
 
-No se modela todo como una tabla genérica. Se usa un **modelo híbrido**:
+El modelo es híbrido: tablas de dominio especializadas + eventos/movimientos temporales. `assets` y relaciones de personal conservan snapshots actuales para búsqueda rápida, pero la historia autoritativa vive en movimientos, custodias, asignaciones, operaciones y auditoría.
 
-- tablas de dominio con datos especializados;
-- `operational_events` como historia transversal;
-- relaciones temporales explícitas;
-- evidencia y procedencia preservadas;
-- un "estado actual" puede derivarse/optimizarse sin borrar historia.
+`occurred_at` representa cuándo ocurrió el hecho; `recorded_at`, cuándo llegó al servidor. Esta separación permite reportes atrasados sin falsificar cronología.
 
-## Temporalidad
+## Identidad
 
-Un evento separa:
+- `persons.id` es estable entre baja/recontratación; el ID laboral pertenece a `employment_engagements`.
+- `assets.id` es estable entre custodios, ubicaciones y proyectos; serie/IMEI/QR/económico son identificadores asociados.
+- proyecto, grupo, ubicación, custodio y estado son contexto temporal, no identidad.
 
-- `occurred_at`: cuándo ocurrió realmente;
-- `recorded_at`: cuándo llegó al servidor.
+## Configuración, no hardcode
 
-Esto permite cargar información atrasada sin falsificar la cronología de la operación.
+Son configurables en BD: catálogos de estado/movimiento/resultado, ubicaciones, tipos de activo, capacidades, tecnologías, organizaciones, perfiles y permisos de negocio, y repositorios de evidencia. Las semillas permiten arrancar, pero no definen un universo cerrado.
 
-## Persona ≠ relación laboral
+El motor usa **capacidades** (`node_field`, `custody`, `maintenance`, `health`, etc.) en vez de condicionar reglas al nombre de un tipo específico.
 
-`persons.id` es estable. `employment_engagements.employment_id` puede cambiar por baja/recontratación. Renovaciones/periodos de outsourcing tienen entidad propia (`contract_periods`).
+## Asset Core y nodos
 
-## Proyectos
+Un activo mantiene snapshot actual y `asset_movements` preserva cada transición. `node_operations` agrupa operaciones de campo y `node_operation_items` conserva línea/estaca, responsable, participantes, resultado y estado anterior/posterior por equipo. Tendido/rotación/levantado/retorno y excepciones no borran la historia previa.
 
-El proyecto es contexto, no identidad. Personas y activos sobreviven al proyecto; se vinculan temporalmente a él. El futuro cierre de proyecto será una conciliación auditable, no un reinicio de números de serie.
+## Mantenimiento y vida útil
 
-## Gobierno
+`maintenance_orders`, `maintenance_parts` y `asset_health_observations` separan hechos de mantenimiento, condición y pronóstico. SOH/RUL nunca cambia automáticamente el estado factual del activo.
 
-El Core separa:
+## Cierre de proyecto
 
-1. **hecho/evento**;
-2. **evidencia/fuente**;
-3. **caso**;
-4. **resolución humana**.
+`project_closeouts` guarda un **snapshot auditable** del material del proyecto al momento del cierre: estados, excepciones críticas, material transferible y detalle por activo. Una transferencia posterior a otro proyecto no reescribe ese corte histórico.
 
-No existe un algoritmo de sanción o etiqueta "buen/mal empleado" en esta versión.
+## Evidencias y NAS
 
+Server Oficina puede almacenar una carga o **indexar un archivo ya existente** en un repositorio. Repositorios SMB son configurables y operan fail-closed: si el montaje desaparece, no se escribe en una carpeta local sustituta. Las credenciales SMB permanecen fuera de PostgreSQL.
 
-## Despliegue físico alpha.2
+## Despliegue
 
-La app sigue como proceso `systemd` del host para que UFW controle 8080 con claridad. PostgreSQL se mantiene en Docker y se publica sólo en loopback (`127.0.0.1:5432`). Esta separación evita exponer la base a la LAN y evita consumir el pequeño `/var`.
+- código: `/opt/server-oficina/releases/<VERSION>`;
+- release activa: `/opt/server-oficina/current`;
+- app FastAPI: servicio `systemd` sin privilegios;
+- PostgreSQL 18.6: Docker, `127.0.0.1:5432`;
+- datos negocio: `/srv/server-oficina`;
+- Docker/containerd: `/srv/docker`.
 
-Código versionado: `/opt/server-oficina/releases/<VERSION>`; activo: `/opt/server-oficina/current`; datos persistentes: `/srv/server-oficina`.
+El instalador alpha.3 hace gate de paquete y backup pre-upgrade antes de promover `current`, y revierte el symlink si el health-check de la nueva app falla.

@@ -1,97 +1,35 @@
 # 16 · Monorepo, backend, frontend y operación
 
-## Por qué no hay carpetas `backend/` y `frontend/`
-
-Server Oficina usa un **monorepo con monolito modular**. La separación es lógica:
+Server Oficina continúa como **monorepo con monolito modular**:
 
 ```text
-app/api/       backend HTTP / permisos
-app/core/      configuración, seguridad, RBAC
-app/db/        persistencia/modelo
-app/services/  lógica de importación/eventos/auditoría
+app/api/       HTTP / permisos / contratos
+app/core/      seguridad, configuración, RBAC
+app/db/        modelos/persistencia
+app/services/  bootstrap, importaciones, eventos, auditoría
 app/static/    frontend HTML/CSS/JS
+scripts/       operación, validación, NAS y despliegue
+tests/         backend + aceptación + E2E
 ```
 
-FastAPI sirve `/static` y `/`. No se necesita Node en producción para ejecutar la UI; Node se instala/usa en alpha.2 sólo para validar sintaxis JavaScript.
+No hay segundo servidor frontend; FastAPI sirve la UI. Node sólo se usa para `node --check`, no es dependencia de runtime del navegador.
 
-## Validación por capa
+## Operadores raíz
 
-### Backend
+Iniciar, detener, reiniciar, estado, logs, abrir, validar, backup, restore, instalar, configurar NAS y configurar bandeja de evidencias tienen wrappers visibles en la raíz para no depender de comandos memorizados.
 
-```bash
-./scripts/verify-backend.sh
-```
+## Gates
 
-Prueba Python, API, reglas de dominio y suite pytest.
+- `VALIDAR_BACKEND.sh`: Python/suite;
+- `VALIDAR_FRONTEND.sh`: JS + contrato UI/API;
+- `VALIDAR_DESPLIEGUE.sh`: shell/infra/upgrade/NAS;
+- `VALIDAR_FRONTEND_E2E.sh`: navegador real;
+- `VALIDAR_SERVER_OFICINA.sh`: paquete base completo.
 
-### Frontend
+## Release válida
 
-```bash
-./scripts/verify-frontend.sh
-```
+Incluye código, versión, changelog, documentación, resultados, scripts, tests, `MANIFEST.sha256` y `BUILD_INFO.json`; excluye `.git`, venv, caches, secretos y datos reales.
 
-Prueba sintaxis JS y contrato estático: elementos requeridos, endpoints mínimos, ausencia de CDN y ausencia de datos demo incrustados.
+## Política operacional
 
-### Despliegue
-
-```bash
-./scripts/verify-deploy.sh
-```
-
-Valida shell y contrato de infraestructura.
-
-### Todo
-
-```bash
-./VALIDAR_SERVER_OFICINA.sh
-```
-
-## Iniciadores “de operación”
-
-No hay que recordar comandos largos:
-
-```text
-INICIAR_SERVER_OFICINA.sh
-DETENER_SERVER_OFICINA.sh
-REINICIAR_SERVER_OFICINA.sh
-ESTADO_SERVER_OFICINA.sh
-LOGS_SERVER_OFICINA.sh
-ABRIR_SERVER_OFICINA.sh
-VALIDAR_SERVER_OFICINA.sh
-BACKUP_SERVER_OFICINA.sh
-RESTORE_SERVER_OFICINA.sh
-INSTALAR_EN_TABLETA.sh
-```
-
-## Política al ejecutar
-
-- una acción por script;
-- `set -euo pipefail` cuando corresponde;
-- detenerse ante el primer error útil;
-- no ocultar salida diagnóstica;
-- no borrar datos como “arreglo” automático;
-- no recrear PostgreSQL si ya existe persistencia válida;
-- restore siempre explícito con ruta de backup.
-
-## Artefactos de una entrega válida
-
-Una release debe incluir:
-
-- código;
-- `VERSION`;
-- `CHANGELOG.md`;
-- `00_LEEME_PRIMERO.md`;
-- documentación de decisiones/descartes/referencias;
-- resultados de pruebas;
-- scripts operativos;
-- `MANIFEST.sha256`;
-- `BUILD_INFO.json`;
-- ZIP final reproducible sin `.git`, venv, caches, secretos ni datos reales.
-
-## Gate de navegador
-
-`VALIDAR_FRONTEND_E2E.sh` valida el flujo visible sobre una base temporal. No se mezcla con `VALIDAR_SERVER_OFICINA.sh` porque el E2E requiere navegador/Playwright; así un host sin navegador devuelve `BLOCKED` explícito en vez de degradar silenciosamente la validación del paquete.
-
-## Operadores raíz visibles
-
-Además del validador global, la raíz expone `VALIDAR_BACKEND.sh`, `VALIDAR_FRONTEND.sh`, `VALIDAR_DESPLIEGUE.sh` y `VALIDAR_FRONTEND_E2E.sh`. El objetivo es que una persona pueda ejecutar un gate por capa sin conocer rutas internas. También se incluye `INSTALAR_ACCESO_ESCRITORIO.sh` para recrear el acceso local sin reinstalar el servidor.
+Scripts usan `set -euo pipefail` cuando corresponde, no borran datos como reparación automática y requieren restore explícito. Actualizar alpha.3 crea backup antes de promover `current` y mantiene la release anterior disponible para rollback.

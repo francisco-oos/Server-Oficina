@@ -6,6 +6,7 @@ trap 'rm -f "$TMP"' EXIT
 find . -type f \
   ! -path './.venv/*' \
   ! -path './runtime/*' \
+  ! -path './tests/runtime/*' \
   ! -path './.pytest_cache/*' \
   ! -path '*/__pycache__/*' \
   ! -name '*.pyc' \

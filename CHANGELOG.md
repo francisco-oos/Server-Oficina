@@ -1,37 +1,62 @@
 # Changelog
 
+## 0.1.0-alpha.3 — 2026-09-11
+
+Evolución aditiva sobre la misma base alpha.2 instalada en la Latitude. Recupera los acuerdos de RRHH operativo, Material, Tracking Nodes, taller, inventario, evidencias y perfiles configurables sin crear un sistema paralelo.
+
+### RRHH y administración
+- categoría, licencia/vigencia, rotación trabajo/descanso y asignaciones temporales;
+- organizaciones/outsourcing normalizados manteniendo compatibilidad con `provider`;
+- eventos de renuncia, despido, fin de contrato y recontratación sobre la misma persona;
+- perfiles de negocio configurables con matriz de permisos y protección del último ADMIN.
+
+### Asset Core / Material
+- tipos de activo y tecnologías configurables; reglas por capacidades, no por nombres hardcodeados;
+- identificadores múltiples: serie, IMEI, QR, económico y futuros;
+- custodia, proyecto, grupo, ubicación y movimientos con historial;
+- carga masiva CSV con PREVIEW/COMMIT y conservación de columnas informativas extra;
+- inventario físico con faltantes observados sin declarar automáticamente pérdida;
+- cierre de proyecto mediante snapshot auditable y transferencia posterior sin reescribir el corte.
+
+### Tracking Nodes
+- operaciones por lote TENDIDO, ROTACION, LEVANTADO, RETORNO e INCIDENT;
+- línea/estaca origen-destino, responsable, participantes y procedencia;
+- resultados/estados probados: dañado, quemado, no encontrado, extraviado, robado, incautado, mantenimiento, hibernado y sin información;
+- resultado de nodo se traduce a movimiento mediante metadatos de catálogo, no condicionales por string.
+
+### Taller / vida útil
+- órdenes de mantenimiento, diagnóstico, acción, resultado y downtime;
+- componentes con serial retirado/instalado;
+- observaciones SOH/RUL/health score con fuente/confianza;
+- una predicción nunca cambia automáticamente el estado factual.
+
+### Evidencias / NAS
+- repositorios LOCAL/SMB configurables y fail-closed si el mount desaparece;
+- upload en streaming con SHA-256, archivo temporal y promoción atómica;
+- indexación de archivo que ya existe en NAS/Windows sin moverlo;
+- scripts para montar NAS con credenciales root-only y bandeja Samba opcional en la Latitude;
+- ninguna IP, letra de unidad o campamento histórico hardcodeado en la UI.
+
+### UI
+- navegación profesional por Operación / Oficina / Administración;
+- dashboard de activos/excepciones/taller;
+- localizador persona/activo;
+- pantallas de Asset Core, nodos, mantenimiento, inventario, evidencias, perfiles, catálogos y cierre de proyecto;
+- corrección de errores `[object Object]` y validación de contraseña inicial.
+
+### Despliegue y QA
+- backup `pg_dump -Fc` pre-upgrade antes de promover release;
+- rollback de symlink `current` si `/api/health` falla;
+- **27 pruebas automáticas** finales más compileall/JS/shell/contratos;
+- E2E de navegador separado: primer admin → login → dashboard → persona → nodo → TENDIDO → logout.
+
 ## 0.1.0-alpha.2 — 2026-09-11
 
-- Se amplía investigación de vida útil con ISO 17359:2018, ISO 13379-1:2025 e ISO 13381-1:2025; RUL queda versionado/proveniente y nunca como sentencia automática.
-- Se añade gate E2E reproducible de navegador (`VALIDAR_FRONTEND_E2E.sh`) separado del gate base.
-
-Endurecimiento de entrega y despliegue sobre la Latitude real, sin crear un sistema paralelo.
-
-### Despliegue/operación
-- Canoniza PostgreSQL 18.6 en Docker con datos en `/srv/server-oficina/data/postgres`.
-- PostgreSQL publicado sólo en `127.0.0.1:5432` para la aplicación host.
-- Aplicación versionada bajo `/opt/server-oficina/releases/<VERSION>` + symlink `current`.
-- Servicio `systemd` actualizado para Docker/PostgreSQL y datos en `/srv`.
-- Iniciadores: iniciar, detener, reiniciar, estado, logs, abrir, validar, backup, restore e instalar.
-- Backup/restore adaptado a contenedor PostgreSQL y evidencia/importaciones.
-- UFW: script para permitir 8080 sólo desde la subred LAN actual.
-
-### Calidad
-- Validación separada de backend, frontend y despliegue.
-- Contrato frontend: IDs requeridos, endpoints mínimos, sin recursos CDN ni datos demo incrustados.
-- Health usa `app.__version__` en lugar de versión hardcodeada.
-- Documentación de pruebas corregida de 7 a 11 tests heredados.
-
-### Investigación/documentación
-- ISO 55000:2024, ISO 14224:2016 y GS1 EPCIS 2.0 como referencias conceptuales para Asset Core.
-- HR Open Standards/JEDx y contexto STPS para RRHH operativo/capacitación/EPP.
-- Diseño de vida útil basado en edad + uso + condición + fallas + mantenimiento + RUL con procedencia, no en un solo campo.
-- Matriz requisito→estado y gates por módulo.
-
-### No cambiado
-- No se agregan todavía tablas de Asset Core/Nodos/Taller.
-- No se modifica el contrato de identidad persona/engagement.
-- No se introducen microservicios ni frontend pesado.
+- Endurecimiento de empaquetado/despliegue sobre Latitude real.
+- PostgreSQL 18.6 en Docker y datos bajo `/srv`.
+- Aplicación host `systemd`, UFW LAN, iniciadores raíz, backup/restore y gates por capa.
+- UI/Oficina/Personal funcionando físicamente y primer administrador validado desde navegador.
+- Investigación/documentación inicial de Asset Core, vida útil y RRHH.
 
 ## 0.1.0-alpha.1 — 2026-09-10
 

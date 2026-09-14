@@ -43,7 +43,7 @@ Se conserva el contrato conceptual PDF + JSON cifrado + hash + fuente. La app ex
 
 ## Duplicar el Tracking Core con un segundo esquema paralelo
 
-**Descartado.** Las tablas funcionales existentes (`persons`, `employment_engagements`, `operational_events`, etc.) siguen siendo la autoridad. Las investigaciones de Asset Core se documentan hasta que llegue su versión.
+**Descartado.** Las tablas funcionales existentes (`persons`, `employment_engagements`, `operational_events`, etc.) siguen siendo la autoridad. Alpha.3 incorpora Asset Core de forma aditiva en el mismo modelo y reutiliza Tracking Core como historia transversal; no crea un segundo esquema paralelo.
 
 ## Una columna `vida_util_restante` como verdad absoluta
 
@@ -51,4 +51,4 @@ Se conserva el contrato conceptual PDF + JSON cifrado + hash + fuente. La app ex
 
 ## Publicar PostgreSQL a la LAN
 
-**Descartado.** El compose alpha.2 liga 5432 a `127.0.0.1` únicamente.
+**Descartado.** El compose vigente liga 5432 a `127.0.0.1` únicamente.

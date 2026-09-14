@@ -1,115 +1,71 @@
-# Server Oficina 0.1.0-alpha.2
+# Server Oficina 0.1.0-alpha.3
 
-Candidato instalable y auditable del sistema **Server Oficina** para Adquisición de Datos. Esta versión conserva el corte funcional de **Oficina / Personal + Tracking Core** de alpha.1 y añade el endurecimiento de entrega/despliegue requerido para la Latitude 7220 real.
+Servidor departamental LAN para Adquisición de Datos. Centraliza identidad laboral, asistencia, proyectos, grupos, activos, nodos, custodia, movimientos, mantenimiento, inventarios, cursos, EPP, casos y evidencias sin destruir el historial operativo.
 
 ## Arquitectura
 
-Monorepo, monolito modular:
+- Debian 13 en Dell Latitude 7220.
+- FastAPI + SQLAlchemy como monolito modular.
+- UI web estática servida por la misma aplicación.
+- PostgreSQL 18.6 en Docker, sólo `127.0.0.1:5432`.
+- aplicación como servicio `systemd` sin privilegios.
+- datos en `/srv/server-oficina` y Docker/containerd en `/srv/docker`.
 
-```text
-Navegador LAN
-   ↓
-FastAPI + UI web estática
-   ├── Auth / RBAC
-   ├── Oficina / Personal
-   ├── Importaciones
-   ├── EPP
-   ├── Capacitación
-   ├── Casos / Evidencia
-   └── Tracking Core
-   ↓
-PostgreSQL 18.6 en Docker
-   ↓
-/srv/server-oficina
-```
+## Alcance alpha.3
 
-No hay un frontend React/Vite separado. `app/static/` es el frontend y FastAPI lo sirve directamente.
+- RRHH operativo: persona estable, altas/recontrataciones, outsourcing, categoría, licencia, rotación, asignaciones temporales y asistencia.
+- perfiles/roles configurables y permisos granulares.
+- tipos/tecnologías/estados/ubicaciones configurables; no dependen de nombres de campamentos hardcodeados.
+- Asset Core con múltiples identificadores y custodia.
+- Tracking Nodes: TENDIDO, ROTACIÓN, LEVANTADO, RETORNO y excepciones.
+- taller/mantenimiento y observaciones de salud/RUL.
+- inventario físico, conciliación de faltantes y corte auditable de material por proyecto.
+- repositorios de evidencia LOCAL/SMB con SHA-256, fail-closed e indexación de archivos ya existentes sin moverlos.
+- carga masiva CSV de activos con preservación de columnas informativas como metadatos.
 
-## Qué resuelve ya
+## Pruebas
 
-- login, sesiones opacas revocables y RBAC granular;
-- primer administrador creado desde navegador y bootstrap de un solo uso;
-- roles `ADMIN`, `HR`, `HSE`, `OFFICE`, `SUPERVISOR`;
-- personas separadas de IDs/relaciones laborales;
-- baja y recontratación con nuevo ID sin duplicar persona;
-- renovaciones/periodos de outsourcing;
-- proyectos y grupos temporales;
-- directorio, búsqueda por nombre/ID y expediente/timeline;
-- importación XLSX/XLSM/CSV con PREVIEW→COMMIT, SHA-256 y archivo original;
-- asistencia;
-- EPP con solicitud separada de validación RRHH;
-- capacitación RRHH→HSE;
-- casos/evidencias sin sanción automática;
-- `occurred_at` separado de `recorded_at`;
-- auditoría;
-- backup/restore;
-- UI responsive sin build frontend pesado;
-- cero datos reales hardcodeados.
-
-## Qué aporta alpha.2
-
-- despliegue adaptado a Debian 13 + Docker/PostgreSQL ya preparado en la Latitude;
-- PostgreSQL/Docker en `/srv`, no en el pequeño `/var`;
-- Postgres sólo expuesto a `127.0.0.1:5432` para la aplicación host;
-- servicio `systemd` sin privilegios;
-- iniciadores raíz `INICIAR/DETENER/REINICIAR/ESTADO/LOGS/ABRIR/VALIDAR/BACKUP/RESTORE/INSTALAR`;
-- validadores explícitos `VALIDAR_BACKEND`, `VALIDAR_FRONTEND`, `VALIDAR_DESPLIEGUE` y `VALIDAR_FRONTEND_E2E`;
-- validadores separados de backend, frontend y despliegue;
-- acceso LAN 8080 restringible por UFW a la subred actual;
-- documentación nueva sobre ciclo de vida/vida útil de equipos y RRHH operativo;
-- matriz requisito→estado para impedir declarar funciones incompletas como terminadas.
-
-## Orden de lectura
-
-Empieza por `00_LEEME_PRIMERO.md`.
-
-## Validación local
+Ejecutar:
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements-dev.txt
 ./VALIDAR_SERVER_OFICINA.sh
-# Gate opcional pero explícito de navegador:
-./VALIDAR_FRONTEND_E2E.sh
 ```
 
-## Instalación en la Latitude preparada
+Gates separados:
 
-Desde la raíz descomprimida:
+```bash
+./VALIDAR_BACKEND.sh
+./VALIDAR_FRONTEND.sh
+./VALIDAR_DESPLIEGUE.sh
+./VALIDAR_FRONTEND_E2E.sh   # requiere Chromium/Chrome + Playwright
+```
+
+El backend incluye **27 pruebas**: identidad/recontratación, EPP, cursos, asistencia, empresas/outsourcing, RRHH ampliado, perfiles, nodos Sercel/INOVA, tecnología futura, inventario, pérdida/incautación/quemado/hibernación, mantenimiento, carga de metadatos, evidencias, cierre de proyecto y una historia de aceptación transversal.
+
+## Actualizar la tableta
 
 ```bash
 ./INSTALAR_EN_TABLETA.sh
 ```
 
-El instalador **no instala PostgreSQL nativo**. Reutiliza/canoniza PostgreSQL 18.6 en Docker con persistencia en `/srv/server-oficina/data/postgres`, instala la aplicación versionada en `/opt/server-oficina/releases/<VERSION>`, crea `/opt/server-oficina/current`, configura `systemd` y prueba `/api/health`.
+El instalador valida la release, crea un `pg_dump` pre-upgrade, conserva el `current` anterior, promueve alpha.3 y revierte el puntero de release si el health check falla.
 
-Después:
+## Evidencias / NAS
 
-```bash
-./ESTADO_SERVER_OFICINA.sh
-./ABRIR_SERVER_OFICINA.sh
-```
-
-## Operación rápida
+No hay rutas UNC ni campamentos hardcodeados. Configure un repositorio desde la UI y, si es SMB:
 
 ```bash
-./INICIAR_SERVER_OFICINA.sh
-./DETENER_SERVER_OFICINA.sh
-./REINICIAR_SERVER_OFICINA.sh
-./LOGS_SERVER_OFICINA.sh
-./BACKUP_SERVER_OFICINA.sh
+./CONFIGURAR_NAS_EVIDENCIAS.sh
 ```
 
-## Investigación y evolución
+Opcionalmente puede crear una bandeja Windows ligera en la propia tableta:
 
-- `docs/12_INVESTIGACION_CICLO_VIDA_ACTIVOS.md`
-- `docs/13_INVESTIGACION_RRHH_OPERATIVO.md`
-- `docs/14_MATRIZ_REQUISITOS_Y_ESTADO.md`
-- `docs/15_CONTRATOS_Y_GATES_MODULARES.md`
+```bash
+./CONFIGURAR_BANDEJA_EVIDENCIAS.sh
+```
 
-La investigación **no adelanta tablas paralelas** en esta alpha. El siguiente módulo se agrega sólo después de cerrar gates del bloque actual.
+Los archivos pesados pueden permanecer en NAS. Server Oficina registra relación con entidad/proyecto, ruta, hash, tamaño, MIME, procedencia y usuario.
 
-## Política de referencias
+## Documentación
 
-Los repositorios/estándares externos se estudian para patrones. No se fuerza la operación a Snipe-IT, Ralph, GLPI, OpenBoxes, HR Open u otro producto. Código externo sólo puede incorporarse con licencia, commit, procedencia, motivo y pruebas documentados.
+Comience por `00_LEEME_PRIMERO.md` y `docs/00_INDICE_DOCUMENTACION.md`.
