@@ -1,5 +1,78 @@
 # Changelog
 
+## 0.1.0-alpha.4 — 2026-09-14
+
+Revisión, corrección y evolución de **la misma base alpha.3**. No se creó un
+proyecto paralelo, no se sustituyó FastAPI/PostgreSQL y no se rehízo el dominio.
+El eje del trabajo fue cerrar la brecha entre lo que el sistema modela y lo que
+la interfaz presentaba, más tres requisitos nuevos.
+
+### Vista resumen configurable (modo DEV)
+- registro de **28 widgets** en código, separado de su configuración en base de datos;
+- **7 vistas resumen**: una general y una por área, todas configurables;
+- modo DEV para mostrar, ocultar, ordenar, redimensionar, retitular y restringir por perfil;
+- creación, activación y borrado de vistas resumen propias;
+- la configuración **acota pero nunca amplía** privilegios: el permiso del widget siempre manda;
+- un widget que falle se aísla y no tumba la pantalla del operador;
+- la siembra de arranque ya no pisa lo que configuró el administrador;
+- documentado cómo crear un widget nuevo sin tocar el endpoint ni la interfaz.
+
+### Dominio de Transporte
+- `transport_assignments`, `transport_checklists` y `transport_incidents`;
+- vínculo temporal unidad ↔ conductor ↔ grupo ↔ proyecto ↔ radio ↔ teléfono;
+- la unidad, el radio y el teléfono **son** activos del Asset Core: no se duplican registros;
+- reasignar cierra la asignación anterior con fecha en lugar de sobrescribirla;
+- checklist con hallazgos que **no** inmoviliza la unidad automáticamente;
+- incidencias que cualquier área puede reportar y sólo Transporte resuelve;
+- ficha de unidad, listado de flota, checklist e incidencias en la interfaz.
+
+### Autoridad sobre el dato por área
+- 7 áreas y **15 dominios de información** con autoridad, consulta, propuesta y confirmación;
+- distinción explícita **proponer ≠ confirmar**, materializada en permisos separados;
+- área declarable por perfil (`role_areas`), que agrupa la navegación y **nunca** autoriza;
+- matriz consultable desde API y desde la interfaz, leída de la misma fuente que la documentación.
+
+### Interfaz reconstruida
+- **navegación doble**: por área en la barra lateral y transversal por el buscador;
+- el menú se construye desde los permisos: desaparecen las entradas que darían 403;
+- **cuatro fichas específicas por dominio** —persona, nodo, activo y unidad— que ya no son intercambiables;
+- expediente de persona con el bloque de localización completo (estado, grupo, responsable, unidad, conductor, radio, teléfono, ubicación, proyecto);
+- ficha de nodo con su ciclo operacional y el estado actual **junto a su derivación**;
+- búsqueda transversal que localiza por nombre, ID laboral, serie, IMEI, QR o número económico y abre la ficha correcta, indicando por qué coincidió;
+- vista resumen que responde qué pasa, qué requiere atención, qué cambió, qué está pendiente y **qué debo atender yo**;
+- **diseño responsive** real (3 puntos de quiebre) para tableta y teléfono;
+- los datos no capturados se distinguen de los vacíos;
+- `app.js` pasa de 170 líneas ilegibles a 2 450 estructuradas y comentadas en español.
+
+### Corrección del `PermissionError` en validación manual
+- las pruebas ya no escriben **nada** dentro del árbol de código;
+- runtime temporal configurable con `SERVER_OFICINA_TEST_RUNTIME`;
+- `scripts/syntax-check.py` sustituye a `compileall`, que escribía `__pycache__`;
+- caché de pytest desactivada por defecto;
+- corregido **sin** `chmod -R 777` y sin debilitar permisos de `/opt`;
+- verificado con árbol en sólo lectura y usuario sin privilegios.
+
+### Catálogos y correcciones
+- añadidos `PLANTADO` y `ALMACENADO`/`STORED`, que faltaban entre los eventos de nodo;
+- las capacidades `radio` y `phone` sustituyen tres decisiones tomadas por nombre de tipo;
+- la siembra ahora **incorpora** capacidades nuevas a tipos ya existentes al actualizar;
+- restaurado el bit de ejecución de los `*.sh`, perdido en el versionado;
+- eliminadas 22 importaciones sin usar; análisis estático limpio.
+
+### Pruebas
+- **62 pruebas** (27 heredadas intactas + 35 nuevas), **0 regresiones**;
+- el **gate E2E de navegador se ejecuta de verdad**, incluida la comprobación responsive a 390 px y la vigilancia de errores de consola;
+- pruebas específicas de escalada de privilegios, aislamiento de fallos y no-sobrescritura de configuración.
+
+### Documentación
+- 10 documentos nuevos: Tracking Core, modelo de dominio por área, autoridad del dato, dashboard configurable y registro de widgets, arquitectura de interfaz, referencia de API, guía multidesarrollador, contrato de ingesta documental, pruebas/runtime y respaldo/restauración;
+- índice reescrito y matriz de requisitos con estado real, prueba que lo demuestra y archivos relacionados;
+- reportes PRE, POST, cambios de interfaz, pruebas, seguridad, revisión independiente y pendientes reales.
+
+### Compatibilidad
+- **sólo se agregaron tablas**; ninguna existente cambió de forma, así que `create_all` promueve la instalación sin migración manual;
+- `GET /api/health`, `GET /api/dashboard` y `GET /api/locate` conservados.
+
 ## 0.1.0-alpha.3 — 2026-09-11
 
 Evolución aditiva sobre la misma base alpha.2 instalada en la Latitude. Recupera los acuerdos de RRHH operativo, Material, Tracking Nodes, taller, inventario, evidencias y perfiles configurables sin crear un sistema paralelo.

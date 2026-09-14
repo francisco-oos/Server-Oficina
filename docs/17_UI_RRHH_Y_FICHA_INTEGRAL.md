@@ -1,3 +1,8 @@
+> **Nota (0.1.0-alpha.4).** El expediente de personal implementado se describe en
+> `docs/31_ARQUITECTURA_UI_Y_NAVEGACION.md` y se construye en
+> `app/services/lookup.py::person_dossier`. Este documento se conserva como
+> antecedente del diseño.
+
 # 17 · Dirección UI RRHH y ficha integral
 
 ## Referencia rescatada

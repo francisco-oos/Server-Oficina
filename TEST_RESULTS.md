@@ -1,118 +1,120 @@
-# Test Results · 0.1.0-alpha.3
+# Test Results · 0.1.0-alpha.4
 
-Fecha de corte: 2026-09-11
+Fecha de corte: 2026-09-14
 
-## Resultado del paquete en entorno de construcción
+El detalle completo está en `reports/REPORTE_PRUEBAS.md`. Este archivo es el
+resumen de la ficha de release.
 
-La suite actual ejecuta **27 pruebas automáticas** y valida el mismo monorepo que se empaqueta.
+## Resultado
 
 ```text
 pytest -q
-...........................                                              [100%]
+..............................................................  [100%]
+62 passed
 
 BACKEND_OK
 FRONTEND_CONTRACT_OK
 FRONTEND_OK
 DEPLOY_CONTRACT_OK
 DEPLOY_OK
+FRONTEND_E2E_OK
 ```
 
-Cobertura principal de backend:
+**62 pruebas** (27 heredadas de alpha.3 sin modificar + 35 nuevas).
+**0 regresiones.**
 
-- bootstrap/login/sesiones/RBAC;
-- creación de perfiles personalizados, edición de permisos y asignación a usuarios;
-- protección de perfiles base y del último administrador;
-- persona estable, altas, bajas, renuncia, despido y recontratación conservando `person_id`;
-- categoría, licencia/vigencia, rotación, supervisor, proyecto, grupo, ubicación y unidad;
-- asistencia manual e importada;
-- cursos, EPP y casos sin resolución automática de RRHH;
-- organizaciones/outsourcing normalizados;
-- Asset Core: NODE, RADIO, ANTENNA, PHONE, COMPUTER, DRONE, VEHICLE, SERVER y NAS;
-- identificadores serie/IMEI/QR/número económico y búsqueda por identificador;
-- tipos, tecnologías, estados y movimientos futuros agregables sin modificar lógica específica;
-- custodia, asignación, transferencia y localizador persona/activo;
-- Tracking Nodes por lote: TENDIDO → ROTACION → LEVANTADO → RETORNO;
-- excepciones DAMAGED/BURNED/MISSING/LOST/STOLEN/SEIZED/MAINTENANCE/HIBERNATED/NO_INFO;
-- recuperación y deshibernación;
-- taller/mantenimiento, piezas retiradas/instaladas, downtime y salud/RUL no autoritativa;
-- inventario físico, faltantes observados y conciliación;
-- carga masiva CSV de activos preservando columnas informativas como metadatos;
-- cierre auditable de material por proyecto y transferencia posterior sin reescribir el snapshot;
-- evidencias LOCAL/SMB, fail-closed, upload SHA-256, indexación de archivos ya existentes sin moverlos;
-- prevención de traversal fuera del repositorio de evidencias;
-- historia de aceptación transversal RRHH + material + nodos + taller + inventario + cierre.
+## Cobertura de backend
 
-## Validaciones estáticas/contratos
+Además de todo lo que ya cubría alpha.3 —bootstrap, RBAC, perfiles
+configurables, identidad estable y recontratación, asistencia, cursos, EPP,
+casos, organizaciones, Asset Core, Tracking Nodes con sus excepciones, taller,
+salud/RUL, inventario, carga masiva, evidencias LOCAL/SMB y cierre de
+proyecto—, esta versión añade:
+
+- registro de widgets coherente con RBAC y con las áreas;
+- siembra de 7 vistas resumen (general + una por área);
+- **la configuración del dashboard no puede otorgar visibilidad** que el permiso niega;
+- restricción por perfil que sólo acota;
+- mostrar, ocultar, ordenar, redimensionar y retitular widgets;
+- validación que rechaza widget desconocido, repetido, tamaño inválido y perfil inexistente **sin dejar media configuración aplicada**;
+- la siembra de arranque no pisa lo que configuró el administrador;
+- una colocación huérfana no rompe el renderizado;
+- un widget que falla se aísla y el resto de la vista sigue funcionando;
+- matriz de autoridad declarada para los 15 dominios;
+- área de perfil asignable, que no otorga permisos;
+- unidad de transporte verificada por **capacidad** del tipo, no por su nombre;
+- reasignación que cierra la anterior sin sobrescribir el historial;
+- radio y teléfono referenciados del Asset Core, sin duplicar registros;
+- checklist con falla que **no** inmoviliza la unidad;
+- incidencia que cualquier área reporta y sólo Transporte resuelve (403 verificado);
+- enlace a orden de taller validado contra el mismo activo;
+- expediente que conserva `person_id` a través de una recontratación;
+- bloque de localización con los 9 campos del encargo;
+- ficha de nodo con ciclo operacional y estado derivado de su historial;
+- **las cuatro fichas tienen estructuras distintas** (prueba que impide volver a una ficha universal);
+- búsqueda transversal por nombre, ID laboral, serie, IMEI, QR y número económico;
+- la búsqueda oculta lo que el usuario no podría abrir e informa cuánto ocultó;
+- los 15 eventos de nodo existen como catálogo configurable;
+- resolución por capacidad y no por nombre de tipo, incluso tras actualizar;
+- aislamiento del runtime de pruebas respecto al árbol de código.
+
+## Gate E2E de navegador — EJECUTADO
+
+A diferencia de alpha.3, donde quedó bloqueado por política de Chromium, **este
+gate se ejecutó de verdad**:
 
 ```text
-python3 -m compileall -q app tests run.py
-node --check app/static/app.js
-./VALIDAR_FRONTEND.sh
-./VALIDAR_DESPLIEGUE.sh
+primer admin → login → vista resumen (7 dashboards) → alta de persona →
+expediente con bloque de localización → alta de nodo → ficha de nodo →
+TENDIDO → estado derivado del historial → alta de unidad →
+asignación de conductor → ficha de unidad → búsqueda por ID laboral →
+búsqueda por QR → apertura de la ficha correcta → modo DEV (renombrar,
+ocultar, guardar) → verificación del cambio en la vista del operador →
+responsive a 390 px sin desbordamiento → logout
 ```
 
-Resultado:
+Los errores de consola de JavaScript hacen fallar el gate. Ninguno registrado.
+
+## Validación sobre release instalada en sólo lectura
+
+El `PermissionError` reportado está corregido y verificado reproduciendo el
+escenario real: árbol en `chmod -R a-w` y usuario sin privilegios.
 
 ```text
-FRONTEND_CONTRACT_OK
-FRONTEND_OK
-DEPLOY_CONTRACT_OK
-DEPLOY_OK
+62 passed
+archivos escritos dentro del árbol de código: 0
 ```
 
-El contrato frontend verifica, entre otras cosas, que no existan rutas históricas/IP de campamento hardcodeadas ni datasets demo incrustados y que estén presentes los endpoints/vistas operativos de alpha.3.
+Sin `chmod -R 777` y sin debilitar permisos de `/opt`.
 
-## Smoke HTTP real aislado
-
-Se levantó Uvicorn con una base SQLite temporal aislada y se verificó:
+## Validaciones estáticas
 
 ```text
-GET /api/health        -> 200, version=0.1.0-alpha.3
+python3 scripts/syntax-check.py app tests run.py   → SYNTAX_OK
+node --check app/static/app.js                     → OK
+python3 scripts/check-frontend-contract.py         → FRONTEND_CONTRACT_OK
+pyflakes app/ tests/ scripts/ run.py               → sin hallazgos
+```
+
+El contrato de interfaz verifica además que la navegación se construya por
+permisos, que exista un renderizador de ficha por dominio, que no haya recursos
+remotos ni rutas de campamento incrustadas, y que se conserven los puntos de
+quiebre responsive.
+
+## Smoke HTTP aislado
+
+```text
+GET /api/health        -> 200, version=0.1.0-alpha.4
 GET /api/setup/status  -> 200, needs_setup=true
 GET /                  -> 200
 GET /static/app.js     -> 200
 GET /static/styles.css -> 200
-SMOKE_OK
 ```
 
-## Gate E2E de navegador
+## Gates físicos pendientes
 
-`VALIDAR_FRONTEND_E2E.sh` incluye un recorrido reproducible:
-
-```text
-primer admin → login → dashboard → alta de persona → alta de nodo → TENDIDO → logout
-```
-
-En **este entorno de construcción**, Chromium está administrado con `URLBlocklist=["*"]`. La política bloquea localhost antes de cargar la aplicación, por lo que el runner devuelve explícitamente:
-
-```text
-E2E_BLOCKED: Chromium tiene una política administrada URLBlocklist=*; ejecute este gate en la Latitude/QA host
-```
-
-No se transforma ese bloqueo en un PASS ficticio. El gate queda preparado para ejecutarse en la Latitude instalada.
-
-## Evidencia física ya validada en la Latitude para la baseline alpha.2
-
-Durante la preparación e instalación real del servidor se comprobó:
-
-- Debian 13/Xfce, SSH y UFW operativos;
-- suspensión/hibernación bloqueadas y pulsación corta de power ignorada;
-- Docker Engine/containerd sobreviven reboot y usan `/srv/docker`;
-- PostgreSQL 18.6 en contenedor `healthy`;
-- persistencia PostgreSQL tras restart;
-- `pg_dump -Fc` y `pg_restore` a base temporal;
-- instalación versionada de alpha.2, `server-oficina.service`, timer de backup y acceso LAN;
-- primer administrador creado desde navegador.
-
-## Gates físicos pendientes para alpha.3
-
-La release sigue siendo **alpha** hasta cerrar en la Latitude/NAS real:
-
-- actualización `alpha.2 → alpha.3` con backup pre-upgrade;
-- `/api/health` y rollback controlado de release;
-- E2E de navegador en la Latitude;
-- repositorio SMB/NAS real y credenciales fuera de PostgreSQL;
-- importación de archivos reales de Oficina/Material;
-- pruebas multiusuario por perfiles reales;
-- backup integral + restore integral después de operar alpha.3;
-- estabilidad prolongada y revisión visual del usuario.
+La release sigue siendo **alpha**. Lo que falta cerrar en la Latitude real está
+en `reports/PENDIENTES_REALES.md`: actualización alpha.3 → alpha.4, rollback,
+E2E en el hardware real, NAS SMB real, archivos reales de oficina, pruebas
+multiusuario, respaldo y restauración completos, estabilidad prolongada y la
+revisión visual del usuario.

@@ -1,3 +1,7 @@
+> **Nota (0.1.0-alpha.4).** La arquitectura de interfaz vigente está en
+> `docs/31_ARQUITECTURA_UI_Y_NAVEGACION.md`. Este documento se conserva como
+> antecedente de los criterios de flujo que la motivaron.
+
 # 26 · UI profesional y flujos
 
 ## Objetivo

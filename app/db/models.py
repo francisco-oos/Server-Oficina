@@ -597,3 +597,173 @@ class EvidenceRecord(Base):
     uploaded_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+# ---------------------------------------------------------------------------
+# Alpha.4 - áreas, dashboard configurable y dominio de Transporte
+# ---------------------------------------------------------------------------
+# Regla de actualización heredada de alpha.3 y respetada aquí: sólo se AGREGAN
+# tablas. No se añade ninguna columna a una tabla existente, de modo que un
+# ``Base.metadata.create_all`` sobre la instalación real de la Latitude cree lo
+# nuevo sin tocar ni migrar lo que ya tiene datos.
+
+
+class RoleArea(Base):
+    """Área departamental declarada para un perfil/rol.
+
+    Se modela como tabla aparte —y no como columna de ``roles``— para cumplir la
+    regla aditiva de actualización. Un rol sin fila aquí se considera del área
+    transversal (``GENERAL``): no tener área nunca niega acceso, sólo hace que
+    la interfaz no pueda destacar su departamento.
+    """
+
+    __tablename__ = "role_areas"
+    role_id: Mapped[str] = mapped_column(ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True)
+    area_code: Mapped[str] = mapped_column(String(40), index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+
+
+class DashboardDefinition(Base):
+    """Una vista resumen configurable (general o por departamento).
+
+    El contenido NO vive aquí: vive en ``DashboardWidgetPlacement``. Esta tabla
+    sólo declara qué dashboards existen, para poder tener uno general y otros
+    específicos por área sin reescribir la pantalla.
+    """
+
+    __tablename__ = "dashboard_definitions"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    key: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(180))
+    description: Mapped[str] = mapped_column(Text, default="")
+    #: Área a la que pertenece; ``GENERAL`` para el dashboard transversal.
+    area_code: Mapped[str] = mapped_column(String(40), default="GENERAL", index=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=100)
+    #: Protege los dashboards semilla de un borrado accidental desde la UI.
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+
+
+class DashboardWidgetPlacement(Base):
+    """Colocación configurada de un widget dentro de un dashboard.
+
+    ``widget_key`` referencia el registro de widgets en código
+    (``app/services/widgets.py``), no una tabla: el catálogo de widgets
+    disponibles es código versionado, mientras que *cuáles se muestran, en qué
+    orden y para quién* es configuración editable desde el modo DEV.
+
+    Consecuencia deliberada: si una release retira un widget, las colocaciones
+    huérfanas se ignoran al renderizar en lugar de romper el dashboard; y si una
+    release agrega uno nuevo, aparece en el catálogo sin necesidad de migrar
+    datos.
+    """
+
+    __tablename__ = "dashboard_widget_placements"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    dashboard_id: Mapped[str] = mapped_column(ForeignKey("dashboard_definitions.id", ondelete="CASCADE"), index=True)
+    widget_key: Mapped[str] = mapped_column(String(100), index=True)
+    visible: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    position: Mapped[int] = mapped_column(Integer, default=100)
+    #: SMALL | MEDIUM | LARGE | FULL. La interfaz traduce el tamaño a columnas.
+    size: Mapped[str] = mapped_column(String(20), default="SMALL")
+    #: Título alternativo; vacío = usar el título declarado por el widget.
+    title_override: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    #: Restricción adicional por perfil. Vacío = visible para cualquier perfil
+    #: que además cumpla el permiso exigido por el widget. Nunca amplía
+    #: privilegios: sólo puede restringir por encima del permiso.
+    role_names: Mapped[list[str]] = mapped_column(JSON, default=list)
+    options: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+    __table_args__ = (UniqueConstraint("dashboard_id", "widget_key", name="uq_dashboard_widget"),)
+
+
+class TransportAssignment(Base):
+    """Vínculo temporal unidad ↔ conductor ↔ grupo ↔ proyecto ↔ ubicación.
+
+    Transporte no es otro inventario: una unidad tiene conductor asignado,
+    grupo, radio y teléfono asociados, y esa relación cambia en el tiempo. Se
+    guarda como periodo (``start_at``/``end_at``) en lugar de como campo actual
+    para no sobrescribir el pasado: quién conducía una unidad el día de una
+    incidencia es una pregunta que el sistema debe poder responder después.
+
+    ``radio_asset_id`` y ``phone_asset_id`` referencian activos ya existentes en
+    el Asset Core; no se duplica el radio ni el teléfono como registro propio de
+    transporte.
+    """
+
+    __tablename__ = "transport_assignments"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    unit_asset_id: Mapped[str] = mapped_column(ForeignKey("assets.id", ondelete="CASCADE"), index=True)
+    driver_person_id: Mapped[str | None] = mapped_column(ForeignKey("persons.id"), nullable=True, index=True)
+    project_id: Mapped[str | None] = mapped_column(ForeignKey("projects.id"), nullable=True, index=True)
+    group_id: Mapped[str | None] = mapped_column(ForeignKey("work_groups.id"), nullable=True, index=True)
+    location_id: Mapped[str | None] = mapped_column(ForeignKey("locations.id"), nullable=True, index=True)
+    radio_asset_id: Mapped[str | None] = mapped_column(ForeignKey("assets.id"), nullable=True, index=True)
+    phone_asset_id: Mapped[str | None] = mapped_column(ForeignKey("assets.id"), nullable=True, index=True)
+    #: Disponibilidad declarada por Transporte: AVAILABLE | ASSIGNED | WORKSHOP | DOWN.
+    availability: Mapped[str] = mapped_column(String(40), default="ASSIGNED", index=True)
+    start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, index=True)
+    end_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    actor_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+class TransportChecklist(Base):
+    """Checklist de una unidad en un momento dado.
+
+    ``items_json`` guarda las respuestas tal como se capturaron (lista de
+    ``{code, label, ok, note}``) en lugar de una tabla de columnas fijas: los
+    puntos de revisión cambian entre proyectos y tipos de unidad, y congelarlos
+    en el esquema obligaría a migrar la base cada vez.
+
+    ``occurred_at`` es cuándo se revisó la unidad; ``recorded_at`` cuándo se
+    capturó en el sistema. Son distintos a propósito: el checklist de campo
+    suele registrarse al volver a cobertura.
+    """
+
+    __tablename__ = "transport_checklists"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    unit_asset_id: Mapped[str] = mapped_column(ForeignKey("assets.id", ondelete="CASCADE"), index=True)
+    driver_person_id: Mapped[str | None] = mapped_column(ForeignKey("persons.id"), nullable=True, index=True)
+    #: PASS | PASS_WITH_FINDINGS | FAIL. Un FAIL no inmoviliza la unidad por sí
+    #: solo: Transporte decide, igual que evidencia ≠ sanción.
+    result: Mapped[str] = mapped_column(String(40), default="PASS", index=True)
+    odometer_km: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fuel_level: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    items_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, index=True)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, index=True)
+    actor_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class TransportIncident(Base):
+    """Incidencia operativa de una unidad de transporte.
+
+    Es un hecho reportado, no un veredicto: ``status`` distingue lo abierto de
+    lo resuelto y ``resolution`` sólo lo escribe quien tiene autoridad sobre el
+    dominio TRANSPORT_CHECKLIST. Si la incidencia deriva en reparación, la
+    orden de taller se abre aparte y se relaciona por ``maintenance_order_id``:
+    una incidencia no es una orden de trabajo.
+    """
+
+    __tablename__ = "transport_incidents"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    unit_asset_id: Mapped[str] = mapped_column(ForeignKey("assets.id", ondelete="CASCADE"), index=True)
+    driver_person_id: Mapped[str | None] = mapped_column(ForeignKey("persons.id"), nullable=True, index=True)
+    incident_type: Mapped[str] = mapped_column(String(80), index=True)
+    severity: Mapped[str] = mapped_column(String(40), default="NORMAL", index=True)
+    summary: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(40), default="OPEN", index=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, index=True)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    reported_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    resolved_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolution: Mapped[str | None] = mapped_column(Text, nullable=True)
+    maintenance_order_id: Mapped[str | None] = mapped_column(ForeignKey("maintenance_orders.id"), nullable=True, index=True)
+    location_id: Mapped[str | None] = mapped_column(ForeignKey("locations.id"), nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)

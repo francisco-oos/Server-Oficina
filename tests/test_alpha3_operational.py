@@ -1,15 +1,11 @@
 from __future__ import annotations
 
-import io
-from datetime import datetime, timezone
-from pathlib import Path
-
 from sqlalchemy import select
 
 from app.db.models import (
-    Asset, AssetHealthObservation, AssetIdentifier, AssetMovement, EmploymentEngagement,
-    EmploymentLifecycleEvent, EngagementOrganizationLink, EvidenceRecord, InventorySession, MaintenancePart, NodeOperationItem, Organization, Person,
-    PersonHRProfile, ProjectCloseout, Role, User,
+    Asset, AssetHealthObservation, AssetIdentifier, EmploymentEngagement,
+    EmploymentLifecycleEvent, EngagementOrganizationLink, EvidenceRecord, InventorySession, MaintenancePart, Organization, Person,
+    PersonHRProfile, ProjectCloseout,
 )
 from tests.helpers import setup_admin
 

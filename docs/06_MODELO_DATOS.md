@@ -73,3 +73,33 @@ Un archivo existente en NAS puede indexarse sin moverlo. Las credenciales SMB no
 ## Evolución de esquema
 
 Alpha.3 añade tablas sin alterar columnas heredadas, por lo que `create_all()` puede materializar este incremento. En cuanto una release necesite `ALTER`, transformación o eliminación de datos, se debe introducir migración versionada explícita antes de desplegarla.
+
+
+## Actualización 0.1.0-alpha.4
+
+Se agregaron **6 tablas** y **ninguna tabla existente cambió de forma**:
+
+| Tabla | Para qué |
+|---|---|
+| `role_areas` | área departamental declarada de un perfil |
+| `dashboard_definitions` | vistas resumen (general y por área) |
+| `dashboard_widget_placements` | qué widget se muestra, dónde, cómo y para quién |
+| `transport_assignments` | unidad ↔ conductor ↔ grupo ↔ radio ↔ teléfono, con periodo |
+| `transport_checklists` | checklist de unidad, con `occurred_at` y `recorded_at` |
+| `transport_incidents` | incidencias de unidad, con reporte y resolución separados |
+
+### Regla de evolución del esquema
+
+El despliegue usa `Base.metadata.create_all` y **no hay herramienta de
+migraciones**. `create_all` crea las tablas que faltan pero **no** altera las
+existentes. Por eso:
+
+> Sólo se AGREGAN tablas. No se añaden, renombran ni eliminan columnas de una
+> tabla que ya tiene datos en producción.
+
+Las tres salidas legítimas cuando hace falta un dato nuevo sobre una entidad
+existente —`metadata_json`, tabla satélite 1:1 y tabla de periodos— están
+explicadas en `docs/33_GUIA_DESARROLLO_MULTIDESARROLLADOR.md`.
+
+El significado operativo de cada dominio está en
+`docs/28_MODELO_DOMINIO_POR_AREA.md`.

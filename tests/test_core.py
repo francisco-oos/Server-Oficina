@@ -2,7 +2,7 @@ from datetime import date
 from sqlalchemy import select
 
 from app.core.security import hash_password
-from app.db.models import EmploymentEngagement, Person, Role, User, EppRequest, EppHistory
+from app.db.models import EmploymentEngagement, Person, Role, User, EppHistory
 from tests.helpers import setup_admin
 
 

@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta, timezone
-from sqlalchemy import select
 
-from app.db.models import OperationalEvent, Person
+from app.db.models import Person
 from app.services.events import record_event
 
 

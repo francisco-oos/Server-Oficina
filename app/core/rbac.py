@@ -34,9 +34,12 @@ PERMISSIONS = {
     "maintenance.manage": "Abrir/diagnosticar/cerrar mantenimiento",
     "inventory.manage": "Abrir y capturar inventarios físicos",
     "inventory.closeout": "Cerrar conciliaciones de inventario/proyecto",
+    "transport.view": "Consultar unidades, conductores y asignaciones de transporte",
+    "transport.manage": "Administrar unidades, conductores, checklist e incidencias de transporte",
     "evidence.view": "Consultar evidencias vinculadas",
     "evidence.manage": "Configurar repositorios y cargar evidencias",
     "audit.view": "Consultar auditoría",
+    "dashboard.configure": "Modo DEV: definir qué widgets aparecen en cada vista resumen",
 }
 
 ROLE_MAP = {
@@ -50,6 +53,7 @@ ROLE_MAP = {
         "attendance.manage", "imports.commit", "epp.view", "epp.request",
         "epp.validate_hr", "training.view", "training.schedule_hr",
         "cases.create", "cases.resolve", "projects.manage", "organizations.manage",
+        "transport.view",
     },
     "HSE": {
         "dashboard.view", "person.view", "training.view", "training.confirm_hse",
@@ -59,14 +63,22 @@ ROLE_MAP = {
         "dashboard.view", "person.view", "epp.view", "epp.request",
         "training.view", "cases.create", "assets.view", "assets.move",
         "nodes.view", "nodes.operate", "inventory.manage", "evidence.view",
+        "transport.view",
     },
     "MATERIAL": {
         "dashboard.view", "assets.view", "assets.create", "assets.edit",
         "assets.move", "assets.bulk", "inventory.manage", "inventory.closeout",
-        "nodes.view", "evidence.view",
+        "nodes.view", "evidence.view", "transport.view",
     },
     "TALLER": {
         "dashboard.view", "assets.view", "nodes.view", "maintenance.view",
-        "maintenance.manage", "evidence.view",
+        "maintenance.manage", "evidence.view", "transport.view",
+    },
+    # Transporte administra su propio dominio y consulta personal/activos para
+    # resolver el vínculo persona ↔ unidad ↔ conductor ↔ grupo sin duplicarlo.
+    "TRANSPORTE": {
+        "dashboard.view", "person.view", "assets.view", "assets.move",
+        "transport.view", "transport.manage", "maintenance.view",
+        "cases.create", "evidence.view",
     },
 }

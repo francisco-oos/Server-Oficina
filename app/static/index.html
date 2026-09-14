@@ -7,59 +7,71 @@
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
+<!--
+  Estructura de la interfaz.
+
+  La navegación es doble, tal como exige el encargo: por ÁREA en la barra
+  lateral (RRHH trabaja desde RRHH, Transporte desde Transporte) y TRANSVERSAL
+  mediante el buscador de la cabecera, que localiza persona, nodo, radio,
+  teléfono, unidad, IMEI, QR, serie o número económico y abre la ficha que
+  corresponde a cada uno.
+
+  El menú lateral se construye en JavaScript a partir de los permisos del
+  usuario: aquí sólo queda el contenedor. Mostrar entradas que después dan 403
+  sería un mal trato al operador de campo.
+-->
 <div id="setup" class="center hidden">
   <form id="setupForm" class="card auth">
-    <div class="auth-mark">SO</div><h1>Server Oficina</h1><p>Configuración inicial del servidor operativo</p>
-    <input name="display_name" placeholder="Nombre del administrador" minlength="2" required>
-    <input name="username" placeholder="Usuario" minlength="3" required>
-    <input name="password" type="password" placeholder="Contraseña (mín. 10 caracteres)" minlength="10" required>
-    <button>Crear administrador</button><div class="msg"></div>
+    <div class="auth-mark">SO</div>
+    <h1>Server Oficina</h1>
+    <p>Configuración inicial del servidor operativo</p>
+    <input name="display_name" placeholder="Nombre del administrador" minlength="2" required autocomplete="name">
+    <input name="username" placeholder="Usuario" minlength="3" required autocomplete="username">
+    <input name="password" type="password" placeholder="Contraseña (mín. 10 caracteres)" minlength="10" required autocomplete="new-password">
+    <button>Crear administrador</button>
+    <div class="msg"></div>
   </form>
 </div>
+
 <div id="login" class="center hidden">
   <form id="loginForm" class="card auth">
-    <div class="auth-mark">SO</div><h1>Server Oficina</h1><p>Adquisición de Datos · Control operativo</p>
-    <input name="username" placeholder="Usuario" required><input name="password" type="password" placeholder="Contraseña" required>
-    <button>Entrar</button><div class="msg"></div>
+    <div class="auth-mark">SO</div>
+    <h1>Server Oficina</h1>
+    <p>Adquisición de Datos · Control operativo</p>
+    <input name="username" placeholder="Usuario" required autocomplete="username">
+    <input name="password" type="password" placeholder="Contraseña" required autocomplete="current-password">
+    <button>Entrar</button>
+    <div class="msg"></div>
   </form>
 </div>
+
 <div id="app" class="hidden shell">
-  <aside>
-    <div class="brand"><div class="logo">SO</div><div><strong>Server Oficina</strong><small>0.1.0 α3</small></div></div>
-    <nav>
-      <div class="nav-group"><span>OPERACIÓN</span>
-        <button data-view="dashboard" class="active">▦ Dashboard</button>
-        <button data-view="locate">⌕ Localizar</button>
-        <button data-view="assets">▣ Activos y Nodos</button>
-        <button data-view="nodes">⌁ Tracking Nodes</button>
-        <button data-view="maintenance">⚙ Taller / Mantenimiento</button>
-        <button data-view="inventory">✓ Inventario físico</button>
-        <button data-view="evidence">⬆ Evidencias</button>
-      </div>
-      <div class="nav-group"><span>OFICINA</span>
-        <button data-view="people">♙ Personal</button>
-        <button data-view="attendance">◷ Asistencia</button>
-        <button data-view="imports">⇧ Importaciones</button>
-        <button data-view="epp">◇ EPP</button>
-        <button data-view="training">△ Capacitación</button>
-        <button data-view="cases">! Casos</button>
-      </div>
-      <div class="nav-group"><span>ADMINISTRACIÓN</span>
-        <button data-view="projects">▤ Proyectos y ubicaciones</button>
-        <button data-view="roles">⌘ Perfiles y permisos</button>
-        <button data-view="catalogs">☷ Catálogos</button>
-        <button data-view="users" id="usersNav">♧ Usuarios</button>
-        <button data-view="audit">≡ Auditoría</button>
-      </div>
-    </nav>
-    <div class="user"><span id="who"></span><button id="logout" class="secondary">Cerrar sesión</button></div>
+  <button id="menuToggle" class="menu-toggle" aria-label="Abrir menú" aria-expanded="false">☰</button>
+  <aside id="sidebar">
+    <div class="brand">
+      <div class="logo">SO</div>
+      <div><strong>Server Oficina</strong><small id="versionTag">Tracking Core</small></div>
+    </div>
+    <nav id="nav"></nav>
+    <div class="user">
+      <span id="who"></span>
+      <button id="logout" class="secondary">Cerrar sesión</button>
+    </div>
   </aside>
+  <div id="scrim" class="scrim hidden"></div>
   <main>
     <header>
-      <div><div class="eyebrow">CONTROL OPERATIVO</div><h1 id="title">Dashboard de Oficina</h1></div>
-      <div class="header-actions"><span class="pill">Tracking Core · α3</span></div>
+      <div class="header-title">
+        <div class="eyebrow" id="eyebrow">CONTROL OPERATIVO</div>
+        <h1 id="title">Vista resumen</h1>
+      </div>
+      <form id="globalSearch" class="global-search" role="search">
+        <input id="globalSearchInput" type="search" placeholder="Buscar persona, nodo, radio, unidad, serie, IMEI, QR…"
+               aria-label="Búsqueda transversal" autocomplete="off">
+        <button type="submit" class="secondary">Buscar</button>
+      </form>
     </header>
-    <section id="content"></section>
+    <section id="content" aria-live="polite"></section>
   </main>
 </div>
 <script src="/static/app.js"></script>

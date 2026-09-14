@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+PY=python3
+[[ -x .venv/bin/python ]] && PY=.venv/bin/python
 BROWSER=${SERVER_OFICINA_E2E_BROWSER:-}
 if [[ -z "$BROWSER" ]]; then
-  for c in /usr/bin/chromium /usr/bin/chromium-browser /usr/bin/google-chrome /usr/bin/google-chrome-stable; do
+  # Se buscan primero los navegadores del sistema (caso Latitude/QA) y después
+  # los que Playwright instala bajo PLAYWRIGHT_BROWSERS_PATH (caso CI/contenedor).
+  for c in /usr/bin/chromium /usr/bin/chromium-browser /usr/bin/google-chrome /usr/bin/google-chrome-stable \
+           "${PLAYWRIGHT_BROWSERS_PATH:-/opt/pw-browsers}"/chromium-*/chrome-linux/chrome; do
     if [[ -x "$c" ]]; then BROWSER="$c"; break; fi
   done
 fi
@@ -13,7 +18,7 @@ if grep -RqsE '"URLBlocklist"[[:space:]]*:[[:space:]]*\[[[:space:]]*"\*"' /etc/c
   echo "E2E_BLOCKED: Chromium tiene una política administrada URLBlocklist=*; ejecute este gate en la Latitude/QA host" >&2
   exit 3
 fi
-python3 -c 'import playwright' >/dev/null 2>&1 || { echo "E2E_BLOCKED: instale requirements-e2e.txt" >&2; exit 3; }
+"$PY" -c 'import playwright' >/dev/null 2>&1 || { echo "E2E_BLOCKED: instale requirements-e2e.txt" >&2; exit 3; }
 TMP=$(mktemp -d /tmp/server-oficina-e2e.XXXXXX)
 PORT=${SERVER_OFICINA_E2E_PORT:-18081}
 export SERVER_OFICINA_DATABASE_URL="sqlite+pysqlite:///$TMP/e2e.db"
@@ -22,7 +27,7 @@ export SERVER_OFICINA_HOST=127.0.0.1
 export SERVER_OFICINA_PORT="$PORT"
 export SERVER_OFICINA_E2E_URL="http://127.0.0.1:$PORT"
 export SERVER_OFICINA_E2E_BROWSER="$BROWSER"
-python3 run.py >"$TMP/server.log" 2>&1 &
+"$PY" run.py >"$TMP/server.log" 2>&1 &
 PID=$!
 cleanup(){ kill "$PID" >/dev/null 2>&1 || true; wait "$PID" >/dev/null 2>&1 || true; rm -rf "$TMP"; }
 trap cleanup EXIT
@@ -31,4 +36,4 @@ for _ in $(seq 1 40); do
   sleep 0.25
 done
 curl -fsS "http://127.0.0.1:$PORT/api/health" >/dev/null || { cat "$TMP/server.log" >&2; exit 4; }
-python3 tests/e2e/ui_smoke.py
+"$PY" tests/e2e/ui_smoke.py

@@ -6,7 +6,6 @@ import io
 import mimetypes
 import os
 import re
-import shutil
 import tempfile
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -32,6 +31,7 @@ from app.db.models import (
 from app.services.audit import audit
 from app.services.events import record_event
 from app.services.imports import commit_import, normalize_text, preview_import
+from app.services.lookup import asset_label
 
 router = APIRouter(prefix="/api")
 
@@ -625,12 +625,13 @@ def _asset_technology(db: Session, code: str | None) -> AssetTechnology | None:
 
 
 def _asset_label(db: Session, asset: Asset) -> str:
-    if asset.internal_code:
-        return asset.internal_code
-    if asset.serial_number:
-        return asset.serial_number
-    ident = db.scalar(select(AssetIdentifier).where(AssetIdentifier.asset_id == asset.id).order_by(AssetIdentifier.is_primary.desc()))
-    return ident.value if ident else asset.id
+    """Alias del helper compartido.
+
+    La implementación vive en ``app/services/lookup.py`` para que las fichas por
+    dominio, los widgets y estas rutas etiqueten un activo exactamente igual.
+    Se conserva el nombre local porque varias rutas de este módulo lo usan.
+    """
+    return asset_label(db, asset)
 
 
 def _apply_asset_movement(db: Session, asset: Asset, data: AssetMoveIn, actor_user_id: str | None) -> AssetMovement:

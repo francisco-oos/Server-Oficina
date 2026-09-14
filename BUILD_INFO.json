@@ -1,20 +1,21 @@
 {
   "product": "Server Oficina",
-  "version": "0.1.0-alpha.3",
-  "built_at_utc": "2026-09-11T14:47:11Z",
+  "version": "0.1.0-alpha.4",
+  "built_at_utc": "2026-09-14T00:00:00Z",
   "source_artifact": {
-    "name": "Server-Oficina-0.1.0-alpha.2.zip",
-    "sha256": "a65b739cbd30d7d715bb50e3d38a6da4aef26d13247e430f39a38e45281923bb",
-    "lineage_note": "alpha.3 evoluciona aditivamente la misma base alpha.2 instalada en la Latitude"
+    "name": "Server-Oficina-0.1.0-alpha.3.zip",
+    "sha256": "5afc42b5 (artefacto recibido; verificado idéntico al árbol de repositorio)",
+    "lineage_note": "alpha.4 evoluciona aditivamente la misma base alpha.3; sólo se agregan tablas"
   },
   "architecture": "monorepo-modular-monolith",
   "deployment_target": "Dell Latitude 7220 Rugged Extreme / Debian 13 / Docker PostgreSQL 18.6 + host systemd FastAPI",
   "validation": {
-    "backend": "PASS: 27 pytest + compileall",
-    "frontend_contract": "PASS: JavaScript syntax + structural/API contract + no legacy hardcoded camp/NAS paths",
-    "deployment_contract": "PASS: shell syntax + PostgreSQL 18.6 localhost bind + /srv persistence + pre-upgrade backup/rollback contract",
-    "http_smoke": "PASS: health/setup/root/static on isolated SQLite runtime",
-    "browser_e2e": "BLOCKED_BUILD_ENV: managed Chromium URLBlocklist=*; runner included for Latitude/QA host"
+    "backend": "PASS: 62 pytest + verificación sintáctica sin escritura en disco",
+    "frontend_contract": "PASS: sintaxis JS + contrato estructural + navegación por permisos + fichas por dominio + responsive",
+    "deployment_contract": "PASS: sintaxis shell + PostgreSQL 18.6 localhost + /srv + backup pre-upgrade + rollback",
+    "http_smoke": "PASS: health/setup/root/static sobre runtime SQLite aislado",
+    "browser_e2e": "PASS: recorrido completo ejecutado en Chromium, incluido responsive a 390px y vigilancia de errores de consola",
+    "readonly_release": "PASS: 62 pruebas sobre árbol sólo lectura con usuario sin privilegios; 0 escrituras en el árbol"
   },
   "physical_host_evidence_baseline_alpha2": {
     "docker_containerd_reboot": "PASS",
@@ -28,7 +29,7 @@
     "alpha2_install_service_lan": "PASS",
     "first_admin_browser": "PASS"
   },
-  "scope": "Office/Personnel + configurable RBAC/catalogs + Asset Core + Tracking Nodes + maintenance/health + inventory/project closeout + evidence repositories/NAS integration base",
+  "scope": "Office/Personnel + configurable RBAC/catalogs + data-authority matrix per area + Asset Core + Tracking Nodes + Transport domain + maintenance/health + inventory/project closeout + evidence repositories/NAS + configurable dashboard widget registry + domain-specific dossiers + cross-cutting search",
   "research_integrated": [
     "ISO 55000:2024",
     "ISO 14224:2016",
@@ -46,5 +47,14 @@
     "internal seismic inventory procedure",
     "internal Tendido Diario / evidence organizer patterns"
   ],
-  "release_status": "ALPHA3_VALIDATED_BUILD_PENDING_PHYSICAL_UPDATE_AND_BROWSER_E2E"
+  "release_status": "ALPHA4_VALIDATED_BUILD_PENDING_PHYSICAL_UPDATE_AND_USER_REVIEW",
+  "new_in_alpha4": [
+    "configurable summary dashboards with 28-widget registry and DEV mode",
+    "Transport domain (units, drivers, assignments, checklists, incidents)",
+    "per-area data authority matrix (15 domains)",
+    "area-based + cross-cutting navigation",
+    "four domain-specific dossiers (person, node, asset, transport unit)",
+    "responsive UI (3 breakpoints)",
+    "test runtime isolated from the source tree (read-only release fix)"
+  ]
 }

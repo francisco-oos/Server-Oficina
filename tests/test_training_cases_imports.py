@@ -50,7 +50,7 @@ def test_import_does_not_guess_rehire_when_id_changes(client, db):
     setup_admin(client)
     person=Person(full_name='Nombre Recontratable', normalized_name='NOMBRE RECONTRATABLE')
     db.add(person); db.flush()
-    from app.db.models import EmploymentEngagement, ImportIssue
+    from app.db.models import EmploymentEngagement
     from datetime import date
     db.add(EmploymentEngagement(person_id=person.id, employment_id='OLD-ID', employer_type='OUTSOURCING', provider='P', start_date=date(2026,1,1), end_date=date(2026,2,1), status='ENDED'))
     db.commit()

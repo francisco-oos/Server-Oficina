@@ -21,6 +21,7 @@ CATALOG_SEEDS = {
         ("STOLEN", "Robado", {"critical": True, "transferable": False}),
         ("SEIZED", "Incautado", {"critical": True, "transferable": False}),
         ("HIBERNATED", "Hibernado", {"critical": False, "transferable": True}),
+        ("STORED", "Almacenado", {"critical": False, "transferable": True}),
         ("NO_INFO", "Retorno sin información", {"critical": True, "transferable": False}),
         ("RETIRED", "Baja", {"critical": False, "transferable": False}),
     ],
@@ -30,6 +31,7 @@ CATALOG_SEEDS = {
         ("RETURN", "Devolución", {"status_after": "AVAILABLE", "closes_custody": True}),
         ("TRANSFER", "Transferencia", {}),
         ("TENDIDO", "Tendido", {"status_after": "DEPLOYED", "requires_capability": "node_field"}),
+        ("PLANTADO", "Plantado", {"status_after": "DEPLOYED", "requires_capability": "node_field"}),
         ("ROTACION", "Rotación", {"status_after": "DEPLOYED", "requires_capability": "node_field"}),
         ("LEVANTADO", "Levantado", {"status_after": "RETURNED", "requires_capability": "node_field"}),
         ("RETORNO", "Retorno", {"status_after": "RETURNED", "requires_capability": "node_field"}),
@@ -42,6 +44,7 @@ CATALOG_SEEDS = {
         ("MAINTENANCE_IN", "Entrada a mantenimiento", {"status_after": "MAINTENANCE"}),
         ("MAINTENANCE_OUT", "Salida de mantenimiento", {"status_after": "AVAILABLE"}),
         ("HIBERNATE", "Hibernar", {"status_after": "HIBERNATED"}),
+        ("STORE", "Almacenar", {"status_after": "STORED"}),
         ("WAKE", "Deshibernar", {"status_after": "AVAILABLE"}),
         ("RECOVER", "Recuperado", {"status_after": "AVAILABLE"}),
         ("NO_INFO", "Retorno sin información", {"status_after": "NO_INFO"}),
@@ -49,6 +52,7 @@ CATALOG_SEEDS = {
     ],
     "NODE_OPERATION": [
         ("TENDIDO", "Tendido", {"movement_type": "TENDIDO"}),
+        ("PLANTADO", "Plantado", {"movement_type": "PLANTADO"}),
         ("ROTACION", "Rotación", {"movement_type": "ROTACION"}),
         ("LEVANTADO", "Levantado", {"movement_type": "LEVANTADO"}),
         ("RETORNO", "Retorno", {"movement_type": "RETORNO"}),
@@ -66,6 +70,7 @@ CATALOG_SEEDS = {
         ("SEIZED", "Incautado", {"status_after": "SEIZED", "movement_type": "SEIZED"}),
         ("MAINTENANCE", "Enviar a mantenimiento", {"status_after": "MAINTENANCE", "movement_type": "MAINTENANCE_IN"}),
         ("HIBERNATED", "Hibernado", {"status_after": "HIBERNATED", "movement_type": "HIBERNATE"}),
+        ("STORED", "Almacenado", {"status_after": "STORED", "movement_type": "STORE"}),
         ("NO_INFO", "Sin información", {"status_after": "NO_INFO", "movement_type": "NO_INFO"}),
     ],
     "ATTENDANCE_STATUS": [
@@ -101,9 +106,9 @@ CATALOG_SEEDS = {
 
 ASSET_TYPE_SEEDS = [
     ("NODE", "Nodo sísmico", ["node_field", "custody", "maintenance", "health"]),
-    ("RADIO", "Radio", ["custody", "maintenance"]),
+    ("RADIO", "Radio", ["custody", "maintenance", "radio"]),
     ("ANTENNA", "Antena", ["custody", "maintenance"]),
-    ("PHONE", "Teléfono", ["custody", "maintenance", "imei"]),
+    ("PHONE", "Teléfono", ["custody", "maintenance", "imei", "phone"]),
     ("COMPUTER", "Computadora", ["custody", "maintenance"]),
     ("DRONE", "Drone", ["custody", "maintenance", "health"]),
     ("VEHICLE", "Vehículo / unidad", ["transport", "custody", "maintenance", "health"]),
@@ -146,10 +151,21 @@ def ensure_operational_catalogs(db: Session) -> None:
         for order, (code, name, metadata) in enumerate(rows, start=10):
             if code not in existing:
                 db.add(CatalogItem(catalog=catalog, code=code, name=name, sort_order=order, metadata_json=metadata))
-    existing_types = {x.code for x in db.scalars(select(AssetType)).all()}
+    # Los tipos semilla se crean si faltan y, si ya existen, se les INCORPORAN
+    # las capacidades que el producto haya añadido en una versión posterior.
+    # Es una unión, nunca un reemplazo: las capacidades que el operador agregó
+    # por su cuenta se conservan. Sin esto, una instalación actualizada tendría
+    # tipos sin las capacidades que la nueva lógica espera (por ejemplo `radio`),
+    # y funciones como el resumen de localización dejarían de encontrarlos.
+    existing_types = {x.code: x for x in db.scalars(select(AssetType)).all()}
     for code, name, capabilities in ASSET_TYPE_SEEDS:
-        if code not in existing_types:
+        current = existing_types.get(code)
+        if current is None:
             db.add(AssetType(code=code, name=name, capabilities=capabilities))
+            continue
+        faltantes = [c for c in capabilities if c not in (current.capabilities or [])]
+        if faltantes:
+            current.capabilities = list(current.capabilities or []) + faltantes
     existing_tech = {x.code for x in db.scalars(select(AssetTechnology)).all()}
     for code, name, vendor in TECHNOLOGY_SEEDS:
         if code not in existing_tech:
