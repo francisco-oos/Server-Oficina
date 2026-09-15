@@ -1,0 +1,23 @@
+﻿SERVER OFICINA - LANZADORES WINDOWS
+
+Coloca estos archivos .BAT en la RAÍZ del repositorio Server-Oficina.
+
+1) INICIAR_SERVER_OFICINA_LOCAL.bat
+   - crea .venv si hace falta
+   - instala dependencias la primera vez
+   - usa SQLite local aislada
+   - abre http://127.0.0.1:8080
+   - NO toca la Latitude ni PostgreSQL
+
+2) VALIDAR_SERVER_OFICINA_LOCAL.bat
+   - syntax-check / compileall
+   - pytest
+   - contrato frontend si existe
+   - node --check si Node.js está instalado
+
+3) REINICIAR_DATOS_LOCALES.bat
+   - borra solamente runtime/local
+   - permite volver a una base SQLite limpia
+
+Base local:
+runtime/local/server_oficina.db

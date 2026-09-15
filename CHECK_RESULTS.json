@@ -1,0 +1,44 @@
+[
+  {
+    "name": "py_compile regression tests",
+    "returncode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "name": "py_compile targeted harness",
+    "returncode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "name": "targeted regression harness",
+    "returncode": 0,
+    "stdout": "TARGETED_REGRESSION_RULES_OK",
+    "stderr": ""
+  },
+  {
+    "name": "node --check admin-management.js",
+    "returncode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "name": "bash -n apply script",
+    "returncode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "name": "git apply --check exact contexts",
+    "returncode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "name": "git apply exact contexts",
+    "returncode": 0,
+    "stdout": "",
+    "stderr": ""
+  }
+]

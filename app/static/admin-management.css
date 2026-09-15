@@ -1,0 +1,40 @@
+/* Relevo OpenAI R1 · edición administrativa de perfiles y usuarios. */
+.admin-permission-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 8px;
+  margin: 14px 0;
+}
+.admin-permission {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  padding: 8px;
+  border: 1px solid var(--border, #d9dee7);
+  border-radius: 8px;
+}
+.admin-permission span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.admin-permission small {
+  color: var(--muted, #667085);
+  line-height: 1.25;
+}
+.admin-permission-grid.is-disabled {
+  opacity: .7;
+}
+.admin-role-card,
+.admin-user-card {
+  margin-bottom: 12px;
+}
+.admin-user-card select[multiple] {
+  width: 100%;
+  min-height: 7.5rem;
+}
+@media (max-width: 620px) {
+  .admin-permission-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,809 @@
+diff --git a/app/api/routes_transport.py b/app/api/routes_transport.py
+--- a/app/api/routes_transport.py
++++ b/app/api/routes_transport.py
+@@ -84,9 +84,33 @@
+         raise HTTPException(404, f"{label} no encontrado")
+ 
+ 
+-def _check_asset(db: Session, asset_id: str | None, label: str) -> None:
+-    if asset_id and not db.get(Asset, asset_id):
++def _check_asset_capability(
++    db: Session,
++    asset_id: str | None,
++    label: str,
++    capability: str,
++) -> Asset | None:
++    """Valida una referencia de activo por semántica, no sólo por FK.
++
++    La interfaz filtra radio/teléfono, pero la API sigue siendo la frontera de
++    seguridad del dominio. Un cliente directo no debe poder registrar un nodo
++    como radio únicamente porque el UUID exista.
++
++    Se usa capacidad en vez del nombre del tipo para conservar extensibilidad:
++    RADIO_SATELITAL o TERMINAL_CAMPO funcionan si declaran ``radio``/``phone``.
++    """
++    if not asset_id:
++        return None
++    asset = db.get(Asset, asset_id)
++    if not asset:
+         raise HTTPException(404, f"{label} no encontrado")
++    atype = db.get(AssetType, asset.asset_type_id)
++    if not atype or capability not in (atype.capabilities or []):
++        raise HTTPException(
++            422,
++            f"{label} no declara la capacidad requerida '{capability}'",
++        )
++    return asset
+ 
+ 
+ @router.get("/units")
+@@ -163,7 +187,7 @@
+     if data.availability not in AVAILABILITY:
+         raise HTTPException(422, f"Disponibilidad inválida: {data.availability}. Válidas: {', '.join(AVAILABILITY)}")
+     _check_person(db, data.driver_person_id, "Conductor")
+-    _check_asset(db, data.radio_asset_id, "Radio")
+-    _check_asset(db, data.phone_asset_id, "Teléfono")
++    _check_asset_capability(db, data.radio_asset_id, "Radio", "radio")
++    _check_asset_capability(db, data.phone_asset_id, "Teléfono", "phone")
+     if data.project_id and not db.get(Project, data.project_id):
+         raise HTTPException(404, "Proyecto no encontrado")
+diff --git a/app/services/lookup.py b/app/services/lookup.py
+--- a/app/services/lookup.py
++++ b/app/services/lookup.py
+@@ -185,5 +185,6 @@
+     unit_asset = db.get(Asset, assignment.unit_asset_id) if assignment and assignment.unit_asset_id else None
+     driver_name = None
++    driver_is_person = False
+     radio_label = None
+     if unit_asset is not None:
+         transport = db.scalar(
+@@ -11,6 +12,7 @@
+             if transport.driver_person_id:
+                 driver = db.get(Person, transport.driver_person_id)
+                 driver_name = driver.full_name if driver else None
++                driver_is_person = transport.driver_person_id == person.id
+             if transport.radio_asset_id:
+                 radio_label = asset_label(db, db.get(Asset, transport.radio_asset_id))
+ 
+@@ -35,5 +37,5 @@
+         "unidad": asset_label(db, unit_asset) if unit_asset else None,
+         "unidad_asset_id": unit_asset.id if unit_asset else None,
+         "conductor": driver_name,
+-        "es_conductor": bool(driver_name and unit_asset and driver_name == person.full_name),
++        "es_conductor": driver_is_person,
+         "radio": radio_label,
+diff --git a/app/api/routes_dossier.py b/app/api/routes_dossier.py
+--- a/app/api/routes_dossier.py
++++ b/app/api/routes_dossier.py
+@@ -17,3 +17,3 @@
+-from app.api.deps import require
++from app.api.deps import current_user, require
+ from app.core.security import permission_codes
+ from app.db.base import get_db
+@@ -75,5 +75,5 @@
+ @router.get("/dossier/asset/{asset_id}")
+-def asset_dossier(asset_id: str, db: Session = Depends(get_db), user: User = Depends(require("assets.view"))):
++def asset_dossier(asset_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+     """Expediente de un activo, con la estructura propia de su dominio.
+ 
+     Un activo con capacidad ``node_field`` devuelve la ficha de nodo (ciclo
+@@ -10,4 +10,7 @@
+     dossier = lookup.build_asset_dossier(db, asset_id)
+     if dossier is None:
+         raise HTTPException(404, "Activo no encontrado")
++    # Exige exactamente el permiso de SU dominio. No se añade assets.view como
++    # requisito implícito a nodos/unidades porque la búsqueda transversal ya
++    # permite esos resultados con nodes.view/transport.view.
+     required = DOSSIER_PERMISSION.get(dossier["kind"])
+diff --git a/app/static/index.html b/app/static/index.html
+--- a/app/static/index.html
++++ b/app/static/index.html
+@@ -5,3 +5,4 @@
+   <title>Server Oficina</title>
+   <link rel="stylesheet" href="/static/styles.css">
++  <link rel="stylesheet" href="/static/admin-management.css">
+ </head>
+@@ -70,4 +71,5 @@
+ </div>
+ <script src="/static/app.js"></script>
++<script src="/static/admin-management.js"></script>
+ </body>
+ </html>
+diff --git a/reports/PENDIENTES_REALES.md b/reports/PENDIENTES_REALES.md
+--- a/reports/PENDIENTES_REALES.md
++++ b/reports/PENDIENTES_REALES.md
+@@ -3,4 +3,14 @@
+ Lo que **no** está terminado. Esta release sigue siendo **alpha** aunque todos
+ los gates automáticos pasen.
+ 
++## Revisión OpenAI R1 · pendientes adicionales
++
++- **Autoridad HSE/casos:** la matriz declara HSE como autoridad de incidencias
++  HSE, pero `CaseRecord` todavía no identifica el área propietaria y
++  `cases.resolve` es global. Debe modelarse autoridad por caso antes de
++  conceder resolución global a HSE.
++- **Administración de perfiles/usuarios:** el backend ya permite editar perfiles
++  personalizados y reasignar perfiles de usuarios; OpenAI R1 agrega la interfaz
++  que faltaba para usar esas capacidades.
++
+ ## Parcial: funciona con límite declarado
+diff --git a/reports/REPORTE_REVISION_INDEPENDIENTE.md b/reports/REPORTE_REVISION_INDEPENDIENTE.md
+--- a/reports/REPORTE_REVISION_INDEPENDIENTE.md
++++ b/reports/REPORTE_REVISION_INDEPENDIENTE.md
+@@ -1,3 +1,8 @@
+ # Reporte de revisión independiente final
+ 
++> **Addendum OpenAI R1 (2026-09-14):** una segunda revisión posterior encontró
++> casos no cubiertos por esta pasada. Ver
++> `reports/REPORTE_REVISION_OPENAI_R1.md`. La conclusión de este documento no
++> debe interpretarse como ausencia absoluta de defectos.
++
+ Segunda pasada sobre Server Oficina **como si fuera otro ingeniero que lo recibe
+diff --git a/docs/14_MATRIZ_REQUISITOS_Y_ESTADO.md b/docs/14_MATRIZ_REQUISITOS_Y_ESTADO.md
+--- a/docs/14_MATRIZ_REQUISITOS_Y_ESTADO.md
++++ b/docs/14_MATRIZ_REQUISITOS_Y_ESTADO.md
+@@ -105,2 +105,3 @@
+-| HSE: cursos, cumplimiento, incidencias | OK | `test_training_cases_imports.py` | idem |
++| HSE: cursos y cumplimiento | OK | `test_training_cases_imports.py` | idem |
++| HSE: autoridad exclusiva sobre sus incidencias | PARCIAL | revisión OpenAI R1 | `CaseRecord` aún no guarda área/autoridad; `cases.resolve` es global |
+ | Transporte: unidades, conductores, checklist | OK | `test_incident_reported_by_any_area_resolved_by_transport` | idem |
+diff --git a/TEST_RESULTS.md b/TEST_RESULTS.md
+--- a/TEST_RESULTS.md
++++ b/TEST_RESULTS.md
+@@ -22,4 +22,9 @@
+ **62 pruebas** (27 heredadas de alpha.3 sin modificar + 35 nuevas).
+-**0 regresiones.**
++**0 regresiones en la suite alpha.4 original.**
++
++> Revisión OpenAI R1 detectó escenarios no cubiertos por esas 62 pruebas
++> (radio/teléfono de Transporte, homónimos en conductor y simetría de permisos
++> de ficha). La candidata corregida añade regresiones específicas; vuelva a
++> ejecutar la suite completa antes de promover.
+ 
+ ## Cobertura de backend
+diff --git a/app/static/admin-management.js b/app/static/admin-management.js
+new file mode 100644
+--- /dev/null
++++ b/app/static/admin-management.js
+@@ -0,0 +1,301 @@
++/*
++ * Server Oficina · administración extendida de perfiles y usuarios
++ * ================================================================
++ *
++ * Relevo OpenAI R1 sobre 0.1.0-alpha.4.
++ *
++ * El backend alpha.3/alpha.4 ya permite editar permisos de perfiles
++ * personalizados y cambiar los perfiles asignados a un usuario. La UI alpha.4
++ * sólo exponía creación y cambio de área. Esta extensión reutiliza esos
++ * endpoints sin duplicar las reglas de autorización.
++ */
++'use strict';
++
++(() => {
++  const BASE_ROLES = new Set([
++    'ADMIN', 'OFFICE', 'HR', 'HSE', 'SUPERVISOR',
++    'MATERIAL', 'TALLER', 'TRANSPORTE'
++  ]);
++
++  const selectedValues = select =>
++    [...select.selectedOptions].map(option => option.value);
++
++  function permissionOptions(permissions, selected, disabled = false) {
++    const allowed = new Set(selected || []);
++    return permissions.map(permission => `
++      <label class="admin-permission">
++        <input type="checkbox" value="${esc(permission.code)}"
++          ${allowed.has(permission.code) ? 'checked' : ''}
++          ${disabled ? 'disabled' : ''}>
++        <span>
++          <b>${esc(permission.code)}</b>
++          <small>${esc(permission.description || '')}</small>
++        </span>
++      </label>`).join('');
++  }
++
++  async function rolesAdminEnhanced() {
++    setTitle('Perfiles y permisos', 'ADMINISTRACIÓN');
++
++    const [permissions, roleRows, areas] = await Promise.all([
++      api('/api/permissions'),
++      api('/api/roles'),
++      api('/api/areas')
++    ]);
++
++    const roleAreas = await Promise.all(
++      roleRows.map(role =>
++        api('/api/roles/' + encodeURIComponent(role.name) + '/area'))
++    );
++    const areaOf = Object.fromEntries(roleAreas.map(item => [item.role, item]));
++
++    $('#content').innerHTML = `
++      <p class="muted view-hint">
++        El <b>área</b> organiza la experiencia. Los <b>permisos</b> son la
++        autorización real. Los perfiles base están protegidos; para una variante
++        operacional cree un perfil personalizado.
++      </p>
++
++      <div class="panel">
++        <h3>Crear perfil personalizado</h3>
++        <form id="roleCreateOpenAI">
++          <div class="formgrid three">
++            <input name="name" placeholder="Nombre del perfil" required minlength="2">
++            <input name="description" placeholder="Descripción">
++            <select name="area_code">
++              ${areas.map(area =>
++                `<option value="${esc(area.code)}">${esc(area.name)}</option>`
++              ).join('')}
++            </select>
++          </div>
++          <div class="admin-permission-grid">
++            ${permissionOptions(permissions, [])}
++          </div>
++          <button>Crear perfil</button>
++          <div class="msg"></div>
++        </form>
++      </div>
++
++      <div class="stack">
++        ${roleRows.map(role => {
++          const protectedRole = BASE_ROLES.has(role.name);
++          const area = areaOf[role.name]?.area_code || 'GENERAL';
++          return `
++            <section class="panel admin-role-card" data-role-card="${esc(role.name)}">
++              <div class="panel-head">
++                <div>
++                  <h3>${esc(role.name)}</h3>
++                  <div class="muted small">
++                    ${protectedRole
++                      ? 'Perfil base protegido · sus permisos no se modifican desde aquí'
++                      : 'Perfil personalizado editable'}
++                  </div>
++                </div>
++                ${protectedRole ? badge('PROTEGIDO') : badge('EDITABLE', 'ok')}
++              </div>
++
++              <div class="formgrid">
++                <label>Descripción
++                  <input data-role-description value="${esc(role.description || '')}"
++                    ${protectedRole ? 'disabled' : ''}>
++                </label>
++                <label>Área
++                  <select data-role-area="${esc(role.name)}">
++                    ${areas.map(item => `<option value="${esc(item.code)}"
++                      ${item.code === area ? 'selected' : ''}>${esc(item.name)}</option>`
++                    ).join('')}
++                  </select>
++                </label>
++              </div>
++
++              <div class="admin-permission-grid ${protectedRole ? 'is-disabled' : ''}">
++                ${permissionOptions(permissions, role.permissions, protectedRole)}
++              </div>
++
++              ${protectedRole ? '' : `
++                <button data-save-role="${esc(role.name)}">Guardar permisos del perfil</button>
++                <div class="msg" data-role-msg="${esc(role.name)}"></div>`}
++            </section>`;
++        }).join('')}
++      </div>`;
++
++    $('#roleCreateOpenAI').onsubmit = async event => {
++      event.preventDefault();
++      const form = event.target;
++      const values = Object.fromEntries(new FormData(form));
++      const selectedPermissions = $$(
++        '.admin-permission input[type="checkbox"]:checked', form
++      ).map(input => input.value);
++
++      try {
++        const created = await api('/api/roles', {
++          method: 'POST',
++          body: {
++            name: values.name,
++            description: values.description || '',
++            permissions: selectedPermissions
++          }
++        });
++        await api('/api/roles/' + encodeURIComponent(created.name) + '/area', {
++          method: 'PUT',
++          body: { area_code: values.area_code }
++        });
++        navigate('roles');
++      } catch (error) {
++        msg(form, error.message);
++      }
++    };
++
++    $$('[data-role-area]').forEach(select => {
++      select.onchange = async () => {
++        try {
++          await api('/api/roles/' + encodeURIComponent(select.dataset.roleArea) + '/area', {
++            method: 'PUT',
++            body: { area_code: select.value }
++          });
++        } catch (error) {
++          alert(error.message);
++        }
++      };
++    });
++
++    $$('[data-save-role]').forEach(button => {
++      button.onclick = async () => {
++        const roleName = button.dataset.saveRole;
++        const card = button.closest('[data-role-card]');
++        const feedback = card.querySelector('[data-role-msg]');
++        const selectedPermissions = $$(
++          '.admin-permission input[type="checkbox"]:checked', card
++        ).map(input => input.value);
++        const description = $('[data-role-description]', card).value;
++
++        try {
++          await api('/api/roles/' + encodeURIComponent(roleName), {
++            method: 'PUT',
++            body: {
++              name: roleName,
++              description,
++              permissions: selectedPermissions
++            }
++          });
++          feedback.textContent = 'Perfil actualizado.';
++          feedback.classList.add('ok');
++        } catch (error) {
++          feedback.textContent = error.message;
++          feedback.classList.remove('ok');
++        }
++      };
++    });
++  }
++
++  async function usersAdminEnhanced() {
++    setTitle('Usuarios', 'ADMINISTRACIÓN');
++
++    const [users, roleRows] = await Promise.all([
++      api('/api/users'),
++      api('/api/roles')
++    ]);
++
++    const roleOptions = selected => {
++      const current = new Set(selected || []);
++      return roleRows.map(role => `
++        <option value="${esc(role.name)}"
++          ${current.has(role.name) ? 'selected' : ''}>${esc(role.name)}</option>`
++      ).join('');
++    };
++
++    $('#content').innerHTML = `
++      <div class="panel">
++        <h3>Crear usuario</h3>
++        <form id="userCreateOpenAI" class="formgrid">
++          <input name="display_name" placeholder="Nombre" required>
++          <input name="username" placeholder="Usuario" required minlength="3">
++          <input name="password" type="password" minlength="10"
++            placeholder="Contraseña (mín. 10)" required>
++          <label>Perfiles
++            <select id="newUserRoles" multiple size="${Math.min(Math.max(roleRows.length, 3), 8)}">
++              ${roleOptions([])}
++            </select>
++          </label>
++          <button class="wide">Crear usuario</button>
++          <div class="msg wide"></div>
++        </form>
++      </div>
++
++      <div class="stack">
++        ${users.map(user => `
++          <section class="panel admin-user-card" data-user-card="${esc(user.id)}">
++            <div class="panel-head">
++              <div>
++                <h3>${esc(user.display_name)}</h3>
++                <div class="muted small">${esc(user.username)}</div>
++              </div>
++              ${badge(user.active ? 'ACTIVO' : 'INACTIVO', user.active ? 'ok' : 'bad')}
++            </div>
++            <label>Perfiles efectivos
++              <select data-user-roles multiple
++                size="${Math.min(Math.max(roleRows.length, 3), 8)}">
++                ${roleOptions(user.roles)}
++              </select>
++            </label>
++            <button data-save-user-roles="${esc(user.id)}">Guardar perfiles</button>
++            <div class="msg"></div>
++          </section>`).join('')}
++      </div>`;
++
++    $('#userCreateOpenAI').onsubmit = async event => {
++      event.preventDefault();
++      const form = event.target;
++      const body = Object.fromEntries(new FormData(form));
++      const roles = selectedValues($('#newUserRoles'));
++
++      if (!roles.length) {
++        msg(form, 'Seleccione al menos un perfil.');
++        return;
++      }
++      try {
++        await api('/api/users', {
++          method: 'POST',
++          body: {
++            username: body.username,
++            display_name: body.display_name,
++            password: body.password,
++            roles
++          }
++        });
++        navigate('users');
++      } catch (error) {
++        msg(form, error.message);
++      }
++    };
++
++    $$('[data-save-user-roles]').forEach(button => {
++      button.onclick = async () => {
++        const card = button.closest('[data-user-card]');
++        const roles = selectedValues($('[data-user-roles]', card));
++        const feedback = $('.msg', card);
++
++        if (!roles.length) {
++          feedback.textContent = 'El usuario debe conservar al menos un perfil.';
++          feedback.classList.remove('ok');
++          return;
++        }
++        try {
++          await api('/api/users/' + encodeURIComponent(button.dataset.saveUserRoles) + '/roles', {
++            method: 'PUT',
++            body: { roles }
++          });
++          feedback.textContent = 'Perfiles actualizados.';
++          feedback.classList.add('ok');
++        } catch (error) {
++          feedback.textContent = error.message;
++          feedback.classList.remove('ok');
++        }
++      };
++    });
++  }
++
++  // Sólo sustituye dos vistas administrativas; no toca seguridad ni dominios.
++  VIEWS.roles = rolesAdminEnhanced;
++  VIEWS.users = usersAdminEnhanced;
++})();
+diff --git a/app/static/admin-management.css b/app/static/admin-management.css
+new file mode 100644
+--- /dev/null
++++ b/app/static/admin-management.css
+@@ -0,0 +1,40 @@
++/* Relevo OpenAI R1 · edición administrativa de perfiles y usuarios. */
++.admin-permission-grid {
++  display: grid;
++  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
++  gap: 8px;
++  margin: 14px 0;
++}
++.admin-permission {
++  display: flex;
++  gap: 9px;
++  align-items: flex-start;
++  padding: 8px;
++  border: 1px solid var(--border, #d9dee7);
++  border-radius: 8px;
++}
++.admin-permission span {
++  display: flex;
++  flex-direction: column;
++  gap: 2px;
++}
++.admin-permission small {
++  color: var(--muted, #667085);
++  line-height: 1.25;
++}
++.admin-permission-grid.is-disabled {
++  opacity: .7;
++}
++.admin-role-card,
++.admin-user-card {
++  margin-bottom: 12px;
++}
++.admin-user-card select[multiple] {
++  width: 100%;
++  min-height: 7.5rem;
++}
++@media (max-width: 620px) {
++  .admin-permission-grid {
++    grid-template-columns: 1fr;
++  }
++}
+diff --git a/tests/test_openai_alpha4_review.py b/tests/test_openai_alpha4_review.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_openai_alpha4_review.py
+@@ -0,0 +1,150 @@
++"""Regresiones de la revisión OpenAI R1 sobre Server Oficina alpha.4."""
++from pathlib import Path
++
++from tests.helpers import setup_admin
++
++
++def _person(client, name: str, employment_id: str) -> str:
++    response = client.post("/api/persons", json={
++        "full_name": name,
++        "employment_id": employment_id,
++        "position": "Operador",
++        "employer_type": "DIRECT",
++        "start_date": "2026-09-01",
++    })
++    assert response.status_code == 200, response.text
++    return response.json()["id"]
++
++
++def _asset(client, code: str, type_code: str, technology: str = "GENERIC") -> str:
++    response = client.post("/api/assets", json={
++        "type_code": type_code,
++        "technology_code": technology,
++        "internal_code": code,
++        "serial_number": f"SN-{code}",
++        "status_code": "AVAILABLE",
++        "identifiers": [],
++    })
++    assert response.status_code == 200, response.text
++    return response.json()["id"]
++
++
++def test_transport_assignment_validates_radio_and_phone_capabilities(client, db):
++    setup_admin(client)
++    unit = _asset(client, "UNIT-OAI-R1", "VEHICLE")
++    node = _asset(client, "NODE-OAI-R1", "NODE", "SERCEL")
++    computer = _asset(client, "PC-OAI-R1", "COMPUTER")
++
++    wrong_radio = client.post(
++        f"/api/transport/units/{unit}/assignments",
++        json={"radio_asset_id": node, "availability": "ASSIGNED"},
++    )
++    assert wrong_radio.status_code == 422
++    assert "radio" in wrong_radio.json()["detail"].lower()
++
++    wrong_phone = client.post(
++        f"/api/transport/units/{unit}/assignments",
++        json={"phone_asset_id": computer, "availability": "ASSIGNED"},
++    )
++    assert wrong_phone.status_code == 422
++    assert "phone" in wrong_phone.json()["detail"].lower() or \
++           "teléfono" in wrong_phone.json()["detail"].lower()
++
++    for code, name, capability in (
++        ("RADIO_SAT_OAI", "Radio satelital OAI", "radio"),
++        ("TERMINAL_OAI", "Terminal de campo OAI", "phone"),
++    ):
++        created = client.post("/api/asset-types", json={
++            "code": code,
++            "name": name,
++            "capabilities": ["custody", capability],
++            "metadata": {},
++        })
++        assert created.status_code in (200, 409), created.text
++
++    sat_radio = _asset(client, "SAT-RAD-OAI", "RADIO_SAT_OAI")
++    field_phone = _asset(client, "PHONE-OAI", "TERMINAL_OAI")
++
++    valid = client.post(
++        f"/api/transport/units/{unit}/assignments",
++        json={
++            "radio_asset_id": sat_radio,
++            "phone_asset_id": field_phone,
++            "availability": "ASSIGNED",
++        },
++    )
++    assert valid.status_code == 200, valid.text
++
++
++def test_person_summary_driver_flag_uses_identity_not_name(client, db):
++    setup_admin(client)
++    passenger = _person(client, "José Operador Homónimo", "OAI-HOMO-01")
++    actual_driver = _person(client, "José Operador Homónimo", "OAI-HOMO-02")
++    unit = _asset(client, "UNIT-HOMO-OAI", "VEHICLE")
++
++    assigned_person = client.post(
++        f"/api/persons/{passenger}/assignments",
++        json={"unit_asset_id": unit, "role_name": "Operador trasladado"},
++    )
++    assert assigned_person.status_code == 200, assigned_person.text
++
++    transport = client.post(
++        f"/api/transport/units/{unit}/assignments",
++        json={"driver_person_id": actual_driver, "availability": "ASSIGNED"},
++    )
++    assert transport.status_code == 200, transport.text
++
++    summary = client.get(f"/api/dossier/person/{passenger}/summary")
++    assert summary.status_code == 200, summary.text
++    payload = summary.json()
++    assert payload["conductor"] == "José Operador Homónimo"
++    assert payload["es_conductor"] is False
++
++
++def test_nodes_view_without_assets_view_can_open_node_found_by_search(client, db):
++    setup_admin(client)
++    node = _asset(client, "NODE-PERM-OAI", "NODE", "SERCEL")
++    generic = _asset(client, "RAD-PERM-OAI", "RADIO")
++
++    role = client.post("/api/roles", json={
++        "name": "SOLO_NODOS_OAI",
++        "description": "Consulta nodos sin Asset Core genérico",
++        "permissions": ["dashboard.view", "nodes.view"],
++    })
++    assert role.status_code in (200, 409), role.text
++
++    user = client.post("/api/users", json={
++        "username": "solonodosoai",
++        "display_name": "Sólo Nodos OAI",
++        "password": "OtraClave123!",
++        "roles": ["SOLO_NODOS_OAI"],
++    })
++    assert user.status_code in (200, 409), user.text
++
++    login = client.post("/api/auth/login", json={
++        "username": "solonodosoai",
++        "password": "OtraClave123!",
++    })
++    assert login.status_code == 200, login.text
++
++    search = client.get("/api/search", params={"q": "NODE-PERM-OAI"})
++    assert search.status_code == 200, search.text
++    assert any(row["id"] == node for row in search.json()["results"])
++
++    opened = client.get(f"/api/dossier/asset/{node}")
++    assert opened.status_code == 200
++
++    generic_denied = client.get(f"/api/dossier/asset/{generic}")
++    assert generic_denied.status_code == 403
++    setup_admin(client)
++
++
++def test_admin_management_extension_is_loaded_and_uses_existing_safe_endpoints():
++    index = Path("app/static/index.html").read_text(encoding="utf-8")
++    script = Path("app/static/admin-management.js").read_text(encoding="utf-8")
++    assert "/static/admin-management.css" in index
++    assert "/static/admin-management.js" in index
++    assert "VIEWS.roles = rolesAdminEnhanced" in script
++    assert "VIEWS.users = usersAdminEnhanced" in script
++    assert "/api/users/" in script
++    assert "method: 'PUT'" in script
+diff --git a/reports/REPORTE_REVISION_OPENAI_R1.md b/reports/REPORTE_REVISION_OPENAI_R1.md
+new file mode 100644
+--- /dev/null
++++ b/reports/REPORTE_REVISION_OPENAI_R1.md
+@@ -0,0 +1,87 @@
++# Reporte de revisión independiente OpenAI R1
++
++Fecha: 2026-09-14
++
++Base auditada:
++
++- rama `claude/server-oficina-review-evolution-ybrrp7`
++- commit `0945a438a69ce33b34d532c2b7be7157b88f943b`
++- versión `0.1.0-alpha.4`
++
++## Dictamen
++
++Alpha.4 es una mejora sustancial y debe conservarse como base. Los parches R01
++y R02 previos de OpenAI quedan supersedidos: aplicarlos crearía dos diseños
++paralelos de Dashboard/Localizador.
++
++La segunda revisión detectó huecos no cubiertos por las 62 pruebas declaradas.
++
++## OAI-01 · Transporte valida existencia, no semántica, de radio/teléfono
++
++`radio_asset_id` y `phone_asset_id` aceptan cualquier `Asset` existente. La UI
++filtra por capacidad, pero un cliente directo podría guardar un nodo como radio.
++
++Corrección: validar capacidades `radio` y `phone` en la API, sin hardcodear
++nombres de tipo.
++
++## OAI-02 · Homónimos pueden falsear `es_conductor`
++
++`lookup.person_summary()` comparaba `driver_name == person.full_name`.
++
++Corrección: comparar `transport.driver_person_id == person.id`.
++
++## OAI-03 · Búsqueda y apertura de nodos no usan la misma autorización
++
++La búsqueda deja ver un nodo con `nodes.view`; la ruta de ficha exigía primero
++`assets.view`. Un perfil `dashboard.view + nodes.view` encontraba el nodo pero
++recibía 403 al abrirlo.
++
++Corrección: la ruta se autentica y luego exige sólo el permiso de su dominio.
++
++## OAI-04 · Autoridad HSE sobre casos es todavía declarativa
++
++La matriz marca HSE como autoridad de `HSE_INCIDENT`, pero el rol base HSE no
++tiene `cases.resolve` y `CaseRecord` no identifica el área propietaria. Darle el
++permiso global sin más permitiría resolver casos ajenos.
++
++Estado correcto: PARCIAL hasta introducir autoridad/área del caso mediante una
++evolución aditiva y pruebas de aislamiento por área.
++
++## OAI-05 · UI administrativa no exponía capacidades ya existentes
++
++El backend ya permite editar perfiles personalizados y cambiar perfiles de
++usuarios. La UI alpha.4 sólo permitía creación y cambio de área.
++
++Se añade una extensión modular que:
++- edita descripción/permisos de perfiles personalizados;
++- mantiene bloqueados los perfiles base;
++- crea usuarios con múltiples perfiles;
++- cambia perfiles de usuarios existentes;
++- conserva la protección del backend para el último ADMIN.
++
++## Verificación hecha por OpenAI
++
++Revisión de código y pruebas sobre:
++RBAC, áreas, dashboard, widgets, transporte, búsqueda/expedientes, runtime,
++seguridad, pendientes y tests alpha.4.
++
++En este runner no existe conectividad de red hacia GitHub, por lo que no se
++pudo clonar la rama para repetir los 62 tests completos. Por transparencia:
++OpenAI no reclama haberlos reejecutado.
++
++Sí se ejecutaron sobre este relevo:
++- `node --check app/static/admin-management.js`;
++- `py_compile tests/test_openai_alpha4_review.py`;
++- un harness dirigido de reglas de regresión;
++- validación semántica del contenido del patch.
++
++Al aplicar el patch en el repositorio real, el siguiente gate obligatorio es
++`VALIDAR_SERVER_OFICINA.sh` y después el E2E.
++
++## Publicación GitHub
++
++La conexión actual informa `push=true` y ChatGPT está configurado para permitir
++todas las acciones del plugin, pero GitHub devuelve HTTP 403 a create_branch,
++update_ref y create_blob: `Resource not accessible by integration`.
++
++Por eso no se tocó `main` ni la rama de Claude y se entrega patch reproducible.
+diff --git a/docs/37_RELEVO_OPENAI_ALPHA4_R1.md b/docs/37_RELEVO_OPENAI_ALPHA4_R1.md
+new file mode 100644
+--- /dev/null
++++ b/docs/37_RELEVO_OPENAI_ALPHA4_R1.md
+@@ -0,0 +1,43 @@
++# 37 · Relevo OpenAI R1 sobre alpha.4
++
++Base exacta:
++
++`0945a438a69ce33b34d532c2b7be7157b88f943b`
++
++## Qué cambia
++
++1. valida radio/teléfono por capacidad;
++2. corrige homónimos en `es_conductor`;
++3. alinea permiso de búsqueda y apertura de ficha por dominio;
++4. agrega pruebas de regresión;
++5. completa edición administrativa de perfiles personalizados y usuarios;
++6. documenta como PARCIAL la autoridad HSE/casos.
++
++## Qué NO se hace a la fuerza
++
++No se concede `cases.resolve` global a HSE. Primero debe existir autoridad de
++caso por área para no permitir que HSE resuelva casos ajenos.
++
++## Gates al aplicar
++
++```bash
++python3 scripts/syntax-check.py app tests run.py
++pytest -q
++node --check app/static/app.js
++node --check app/static/admin-management.js
++python3 scripts/check-frontend-contract.py
++./VALIDAR_BACKEND.sh
++./VALIDAR_FRONTEND.sh
++./VALIDAR_DESPLIEGUE.sh
++./VALIDAR_FRONTEND_E2E.sh
++```
++
++## Manual
++
++- Modo DEV sigue funcionando.
++- Perfil personalizado: editar permisos y guardar.
++- Usuario: asignar varios perfiles y cambiarlos.
++- Nodo con `nodes.view` sin `assets.view`: buscar y abrir.
++- Nodo usado como radio: 422.
++- Tipo futuro con capacidad `radio`: aceptado.
++- Dos personas homónimas: sólo el `person_id` asignado es conductor.
