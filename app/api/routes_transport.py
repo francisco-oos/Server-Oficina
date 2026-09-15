@@ -105,9 +105,33 @@ def _check_person(db: Session, person_id: str | None, label: str) -> None:
         raise HTTPException(404, f"{label} no encontrado")
 
 
-def _check_asset(db: Session, asset_id: str | None, label: str) -> None:
-    if asset_id and not db.get(Asset, asset_id):
+def _check_asset_capability(
+    db: Session,
+    asset_id: str | None,
+    label: str,
+    capability: str,
+) -> Asset | None:
+    """Valida una referencia de activo por semántica, no sólo por FK.
+
+    La interfaz filtra radio/teléfono, pero la API sigue siendo la frontera de
+    seguridad del dominio. Un cliente directo no debe poder registrar un nodo
+    como radio únicamente porque el UUID exista.
+
+    Se usa capacidad en vez del nombre del tipo para conservar extensibilidad:
+    RADIO_SATELITAL o TERMINAL_CAMPO funcionan si declaran ``radio``/``phone``.
+    """
+    if not asset_id:
+        return None
+    asset = db.get(Asset, asset_id)
+    if not asset:
         raise HTTPException(404, f"{label} no encontrado")
+    atype = db.get(AssetType, asset.asset_type_id)
+    if not atype or capability not in (atype.capabilities or []):
+        raise HTTPException(
+            422,
+            f"{label} no declara la capacidad requerida '{capability}'",
+        )
+    return asset
 
 
 @router.get("/units")
@@ -189,8 +213,8 @@ def assign_unit(asset_id: str, data: AssignmentIn, db: Session = Depends(get_db)
     if data.availability not in AVAILABILITY:
         raise HTTPException(422, f"Disponibilidad inválida: {data.availability}. Válidas: {', '.join(AVAILABILITY)}")
     _check_person(db, data.driver_person_id, "Conductor")
-    _check_asset(db, data.radio_asset_id, "Radio")
-    _check_asset(db, data.phone_asset_id, "Teléfono")
+    _check_asset_capability(db, data.radio_asset_id, "Radio", "radio")
+    _check_asset_capability(db, data.phone_asset_id, "Teléfono", "phone")
     if data.project_id and not db.get(Project, data.project_id):
         raise HTTPException(404, "Proyecto no encontrado")
     if data.group_id and not db.get(WorkGroup, data.group_id):

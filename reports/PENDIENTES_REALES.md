@@ -3,6 +3,16 @@
 Lo que **no** está terminado. Esta release sigue siendo **alpha** aunque todos
 los gates automáticos pasen.
 
+## Revisión OpenAI R1 · pendientes adicionales
+
+- **Autoridad HSE/casos:** la matriz declara HSE como autoridad de incidencias
+  HSE, pero `CaseRecord` todavía no identifica el área propietaria y
+  `cases.resolve` es global. Debe modelarse autoridad por caso antes de
+  conceder resolución global a HSE.
+- **Administración de perfiles/usuarios:** el backend ya permite editar perfiles
+  personalizados y reasignar perfiles de usuarios; OpenAI R1 agrega la interfaz
+  que faltaba para usar esas capacidades.
+
 ## Parcial: funciona con límite declarado
 
 | # | Qué | Qué falta exactamente |

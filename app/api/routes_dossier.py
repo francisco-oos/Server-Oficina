@@ -16,7 +16,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.api.deps import require
+from app.api.deps import current_user, require
 from app.core.security import permission_codes
 from app.db.base import get_db
 from app.db.models import User
@@ -81,7 +81,7 @@ def person_summary(person_id: str, db: Session = Depends(get_db), user: User = D
 
 
 @router.get("/dossier/asset/{asset_id}")
-def asset_dossier(asset_id: str, db: Session = Depends(get_db), user: User = Depends(require("assets.view"))):
+def asset_dossier(asset_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Expediente de un activo, con la estructura propia de su dominio.
 
     Un activo con capacidad ``node_field`` devuelve la ficha de nodo (ciclo
@@ -92,6 +92,9 @@ def asset_dossier(asset_id: str, db: Session = Depends(get_db), user: User = Dep
     dossier = lookup.build_asset_dossier(db, asset_id)
     if dossier is None:
         raise HTTPException(404, "Activo no encontrado")
+    # Exige exactamente el permiso de SU dominio. No se añade assets.view como
+    # requisito implícito a nodos/unidades porque la búsqueda transversal ya
+    # permite esos resultados con nodes.view/transport.view.
     required = DOSSIER_PERMISSION.get(dossier["kind"])
     if required and required not in permission_codes(user):
         raise HTTPException(403, f"Permiso requerido para esta ficha: {required}")

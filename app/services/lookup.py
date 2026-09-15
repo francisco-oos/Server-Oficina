@@ -185,6 +185,7 @@ def person_summary(db: Session, person_id: str) -> dict | None:
 
     unit_asset = db.get(Asset, assignment.unit_asset_id) if assignment and assignment.unit_asset_id else None
     driver_name = None
+    driver_is_person = False
     radio_label = None
     if unit_asset is not None:
         transport = db.scalar(
@@ -196,6 +197,7 @@ def person_summary(db: Session, person_id: str) -> dict | None:
             if transport.driver_person_id:
                 driver = db.get(Person, transport.driver_person_id)
                 driver_name = driver.full_name if driver else None
+                driver_is_person = transport.driver_person_id == person.id
             if transport.radio_asset_id:
                 radio_label = asset_label(db, db.get(Asset, transport.radio_asset_id))
 
@@ -220,7 +222,7 @@ def person_summary(db: Session, person_id: str) -> dict | None:
         "unidad": asset_label(db, unit_asset) if unit_asset else None,
         "unidad_asset_id": unit_asset.id if unit_asset else None,
         "conductor": driver_name,
-        "es_conductor": bool(driver_name and unit_asset and driver_name == person.full_name),
+        "es_conductor": driver_is_person,
         "radio": radio_label,
         "telefono": profile.phone if profile else None,
         "ubicacion": _name_of(db, Location, assignment.location_id) if assignment else None,

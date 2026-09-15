@@ -21,7 +21,12 @@ FRONTEND_E2E_OK
 ```
 
 **62 pruebas** (27 heredadas de alpha.3 sin modificar + 35 nuevas).
-**0 regresiones.**
+**0 regresiones en la suite alpha.4 original.**
+
+> Revisión OpenAI R1 detectó escenarios no cubiertos por esas 62 pruebas
+> (radio/teléfono de Transporte, homónimos en conductor y simetría de permisos
+> de ficha). La candidata corregida añade regresiones específicas; vuelva a
+> ejecutar la suite completa antes de promover.
 
 ## Cobertura de backend
 

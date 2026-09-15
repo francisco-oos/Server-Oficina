@@ -1,5 +1,10 @@
 # Reporte de revisión independiente final
 
+> **Addendum OpenAI R1 (2026-09-14):** una segunda revisión posterior encontró
+> casos no cubiertos por esta pasada. Ver
+> `reports/REPORTE_REVISION_OPENAI_R1.md`. La conclusión de este documento no
+> debe interpretarse como ausencia absoluta de defectos.
+
 Segunda pasada sobre Server Oficina **como si fuera otro ingeniero que lo recibe
 por primera vez**, incluida la deuda técnica creada por esta misma evolución.
 

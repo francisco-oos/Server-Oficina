@@ -99,7 +99,8 @@ declarado · **PENDIENTE** no implementado.
 |---|---|---|---|
 | Matriz autoridad / consulta / propuesta / confirmación | OK | `test_authority_matrix_is_declared_for_every_domain` | `app/core/areas.py` |
 | RRHH: identidad, contrataciones, asignaciones, asistencia, EPP | OK | `test_alpha3_operational.py` | `DATA_DOMAINS` |
-| HSE: cursos, cumplimiento, incidencias | OK | `test_training_cases_imports.py` | idem |
+| HSE: cursos y cumplimiento | OK | `test_training_cases_imports.py` | idem |
+| HSE: autoridad exclusiva sobre sus incidencias | PARCIAL | revisión OpenAI R1 | `CaseRecord` aún no guarda área/autoridad; `cases.resolve` es global |
 | Transporte: unidades, conductores, checklist | OK | `test_incident_reported_by_any_area_resolved_by_transport` | idem |
 | Material: inventario, custodia, existencia | OK | `test_alpha3_operational.py` | idem |
 | Operación: historia de nodos · Taller: diagnóstico | OK | idem | idem |
