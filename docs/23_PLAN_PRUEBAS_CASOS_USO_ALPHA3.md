@@ -117,4 +117,4 @@ Se valida que el corte identifique material crítico y transferible, persista co
 
 ## Cobertura final de construcción
 
-La suite final de alpha.3 contiene **27 pruebas automáticas aprobadas**. El detalle reproducible se mantiene en `TEST_RESULTS.md`.
+La suite final de alpha.3 contiene **27 pruebas automáticas aprobadas**. El detalle reproducible se mantiene en `reports/TEST_RESULTS.md`.

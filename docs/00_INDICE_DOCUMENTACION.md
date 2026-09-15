@@ -72,7 +72,7 @@ se presenta como función terminada.
 
 ## Documentos raíz de entrega
 
-`00_LEEME_PRIMERO.md`, `README.md`, `CHANGELOG.md`, `TEST_RESULTS.md`,
+`docs/INICIO_RAPIDO.md`, `README.md`, `CHANGELOG.md`, `reports/TEST_RESULTS.md`,
 `SECURITY.md`, `NOTICE.md`, `BUILD_INFO.json` y `MANIFEST.sha256` forman la
 ficha de una release. En `reports/` están los reportes PRE/POST, la matriz de
 requisitos, el reporte de cambios de interfaz, el de seguridad y los pendientes

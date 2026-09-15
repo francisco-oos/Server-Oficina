@@ -52,7 +52,7 @@ faltaban por completo.
 ## Orden recomendado de lectura
 
 ```text
- 1. 00_LEEME_PRIMERO.md            (este archivo)
+ 1. docs/INICIO_RAPIDO.md            (este archivo)
  2. docs/00_INDICE_DOCUMENTACION.md
  3. docs/27_TRACKING_CORE.md       el núcleo común y sus invariantes
  4. docs/29_AUTORIDAD_DATO_POR_AREA.md   quién manda sobre cada dato

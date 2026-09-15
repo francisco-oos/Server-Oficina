@@ -102,7 +102,7 @@ el usuario.
 
 ## Documentación
 
-Comience por `00_LEEME_PRIMERO.md` y `docs/00_INDICE_DOCUMENTACION.md`.
+Comience por `docs/INICIO_RAPIDO.md` y `docs/00_INDICE_DOCUMENTACION.md`.
 
 Para desarrollar: `docs/33_GUIA_DESARROLLO_MULTIDESARROLLADOR.md`.
 
