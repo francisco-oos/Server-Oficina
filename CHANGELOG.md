@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.2.0-alpha.1 — candidato 2026-09-21
+
+Evolución local-first sobre 0.1.0-alpha.4. Los formatos de oficina continúan
+siendo entregables canónicos; Server Oficina añade sincronización, versionado,
+contexto verificable e interpretación local sin obligar a reemplazar Excel.
+
+### Nube local
+- modelo aditivo de equipos, carpetas, documentos y DAG de versiones;
+- topología estrella prevista: PCs ↔ Latitude; Synology como réplica separada;
+- watcher de dos pasadas para no ingerir un archivo mientras Office lo escribe;
+- borrado lógico/tombstone: no existe purge físico automático;
+- API y adaptador Syncthing restringido a loopback/red privada.
+
+### Concurrencia
+- leases cooperativos de edición con TTL;
+- version vectors para distinguir BEFORE/AFTER/EQUAL/CONCURRENT;
+- merge semántico 3-way inspirado en Git únicamente para registros con clave
+  estable;
+- conflicto explícito si dos lados cambian el mismo campo;
+- nunca se fusionan bytes XLSX de forma ciega.
+
+### Inteligencia documental
+- reglas aprendidas por área/familia/contexto;
+- aclaraciones conversacionales persistentes, p. ej. una columna nueva;
+- hechos extraídos con tiempo, confianza y versión documental fuente;
+- endpoint LLM local fail-closed: URLs públicas se rechazan;
+- el modelo no escribe directamente en las tablas de dominio.
+
+### Grafo
+- proyección temporal sobre hechos documentales con procedencia hasta
+  documento/versión/hash;
+- búsqueda de vecindad sin introducir todavía una segunda base de grafos.
+
+### Calidad
+- simulación automatizada de 24 clientes, leases y concurrencia;
+- pruebas de aprendizaje/correcciones, grafo, privacidad y watcher;
+- CI Python 3.12/3.13;
+- despliegue de laboratorio separado del instalador productivo.
+
 ## 0.1.0-alpha.4 — 2026-09-14
 
 Revisión, corrección y evolución de **la misma base alpha.3**. No se creó un
