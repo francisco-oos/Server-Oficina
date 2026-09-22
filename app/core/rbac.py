@@ -1,7 +1,6 @@
 # Permisos técnicos del sistema. Los perfiles/roles de negocio NO están
 # hardcodeados: un administrador puede crear roles nuevos y seleccionar estos
-# permisos desde la UI/API. Los roles de ROLE_MAP son semillas protegidas para
-# que una instalación nueva siempre tenga perfiles funcionales de partida.
+# permisos desde la UI/API.
 PERMISSIONS = {
     "dashboard.view": "Ver dashboard de Oficina",
     "person.view": "Consultar personal",
@@ -40,45 +39,51 @@ PERMISSIONS = {
     "evidence.manage": "Configurar repositorios y cargar evidencias",
     "audit.view": "Consultar auditoría",
     "dashboard.configure": "Modo DEV: definir qué widgets aparecen en cada vista resumen",
+    "localcloud.view": "Consultar estado de Nube Local, versiones y reservas de archivo",
+    "localcloud.manage": "Administrar equipos, carpetas y política de sincronización local",
+    "documents.ingest": "Registrar versiones documentales para análisis",
+    "documents.review": "Resolver aclaraciones del intérprete documental del área",
+    "assistant.query": "Consultar el grafo y contexto verificable del asistente local",
 }
+
+_COMMON_INTELLIGENCE = {"localcloud.view", "documents.review", "assistant.query"}
 
 ROLE_MAP = {
     "ADMIN": set(PERMISSIONS),
     "OFFICE": {
         "dashboard.view", "person.view", "epp.view", "epp.request",
         "training.view", "cases.create", "assets.view", "evidence.view",
+        "localcloud.view", "assistant.query",
     },
     "HR": {
         "dashboard.view", "person.view", "person.edit", "attendance.import",
         "attendance.manage", "imports.commit", "epp.view", "epp.request",
         "epp.validate_hr", "training.view", "training.schedule_hr",
         "cases.create", "cases.resolve", "projects.manage", "organizations.manage",
-        "transport.view",
-    },
+        "transport.view", "documents.ingest",
+    } | _COMMON_INTELLIGENCE,
     "HSE": {
         "dashboard.view", "person.view", "training.view", "training.confirm_hse",
-        "cases.create", "evidence.view",
-    },
+        "cases.create", "evidence.view", "documents.ingest",
+    } | _COMMON_INTELLIGENCE,
     "SUPERVISOR": {
         "dashboard.view", "person.view", "epp.view", "epp.request",
         "training.view", "cases.create", "assets.view", "assets.move",
         "nodes.view", "nodes.operate", "inventory.manage", "evidence.view",
         "transport.view",
-    },
+    } | _COMMON_INTELLIGENCE,
     "MATERIAL": {
         "dashboard.view", "assets.view", "assets.create", "assets.edit",
         "assets.move", "assets.bulk", "inventory.manage", "inventory.closeout",
-        "nodes.view", "evidence.view", "transport.view",
-    },
+        "nodes.view", "evidence.view", "transport.view", "documents.ingest",
+    } | _COMMON_INTELLIGENCE,
     "TALLER": {
         "dashboard.view", "assets.view", "nodes.view", "maintenance.view",
         "maintenance.manage", "evidence.view", "transport.view",
-    },
-    # Transporte administra su propio dominio y consulta personal/activos para
-    # resolver el vínculo persona ↔ unidad ↔ conductor ↔ grupo sin duplicarlo.
+    } | _COMMON_INTELLIGENCE,
     "TRANSPORTE": {
         "dashboard.view", "person.view", "assets.view", "assets.move",
         "transport.view", "transport.manage", "maintenance.view",
-        "cases.create", "evidence.view",
-    },
+        "cases.create", "evidence.view", "documents.ingest",
+    } | _COMMON_INTELLIGENCE,
 }
