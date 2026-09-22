@@ -24,7 +24,7 @@ def active_lease(db: Session, share_id: str, relative_path: str, *, at: datetime
         FileLease.status == "ACTIVE",
     ).order_by(FileLease.acquired_at.desc())).all()
     for row in rows:
-        if row.expires_at > now:
+        if _as_utc(row.expires_at) > now:
             return row
         row.status = "EXPIRED"
     if rows:
