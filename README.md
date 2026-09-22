@@ -1,9 +1,8 @@
-# Server Oficina 0.1.0-alpha.4
+# Server Oficina 0.2.0-alpha.1 — candidato
 
-Servidor departamental LAN para Adquisición de Datos. Centraliza identidad
-laboral, asistencia, proyectos, grupos, activos, nodos, transporte, custodia,
-movimientos, mantenimiento, inventarios, cursos, EPP, casos y evidencias sin
-destruir el historial operativo.
+Servidor departamental LAN y **nube local privada** para Adquisición de Datos.
+Centraliza identidad laboral, activos, nodos, transporte, evidencias y contexto
+operativo sin sustituir Excel/Word/PDF ni destruir el historial.
 
 ## Idea central
 
@@ -47,6 +46,31 @@ Operación (Tracking Nodes) · Taller/TX · Administración.
 - **Vista resumen configurable**: 28 widgets y 7 dashboards administrables desde
   un modo DEV, sin tocar código.
 
+
+## Nube Local 0.2
+
+La Latitude + SSD pasa a ser el hub operativo local de la oficina:
+
+```text
+PCs de oficina ⇄ sincronización LAN ⇄ Latitude + SSD
+                                      ├─ archivos canónicos/versiones
+                                      ├─ Tracking Core + PostgreSQL
+                                      ├─ grafo temporal derivado
+                                      ├─ inteligencia documental local
+                                      └─ réplica → Synology cuando esté disponible
+```
+
+Regla de producto: **el archivo es canónico; la base es una proyección
+verificable; la IA interpreta pero no recuerda ni decide por sí sola**.
+
+La primera candidata usa Syncthing como transporte LAN, leases cooperativos para
+prevenir doble escritura, preservación de conflictos y merge semántico de tres
+vías sólo para familias estructuradas con clave estable. El NAS/Internet no son
+requisito para que la oficina siga trabajando.
+
+Vea `docs/38_MISION_VISION_NUBE_LOCAL_IA.md` a
+`docs/44_INVESTIGACION_SINCRONIZACION_IA_GRAFOS.md`.
+
 ## Navegación
 
 Doble, porque ambas hacen falta:
@@ -66,7 +90,7 @@ Doble, porque ambas hacen falta:
 Gates por capa:
 
 ```bash
-./VALIDAR_BACKEND.sh            # 62 pruebas + verificación sintáctica
+./VALIDAR_BACKEND.sh            # suite histórica + nube local + sintaxis
 ./VALIDAR_FRONTEND.sh           # sintaxis JS + contrato de interfaz
 ./VALIDAR_DESPLIEGUE.sh         # sintaxis shell + contratos de despliegue
 ./VALIDAR_FRONTEND_E2E.sh       # recorrido de navegador (requiere Chromium)
@@ -84,8 +108,9 @@ suite no escribe nada dentro del árbol de código. Ver
 
 Valida la release, crea un `pg_dump` pre-upgrade, conserva el `current`
 anterior, promueve la versión nueva y revierte el puntero si el health check
-falla. Esta versión **sólo agrega tablas**, por lo que `create_all` actualiza el
-esquema sin migración manual.
+falla. Esta candidata mantiene cambios de esquema **aditivos**. No se promueve a la
+tableta productiva hasta superar CI, prueba física, rollback/restore y ensayo
+de sincronización en una carpeta LAB.
 
 ## Evidencias / NAS
 

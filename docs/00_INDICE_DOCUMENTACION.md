@@ -1,4 +1,4 @@
-# 00 · Índice de documentación — Server Oficina 0.1.0-alpha.4
+# 00 · Índice de documentación — Server Oficina 0.2.0-alpha.1 (candidato)
 
 Este índice define el orden canónico de lectura. La documentación distingue
 **implementado**, **validado**, **parcial** y **futuro**; una idea investigada no
@@ -15,6 +15,23 @@ se presenta como función terminada.
 | 5 | `06_MODELO_DATOS.md` | modelo de datos e invariantes |
 | 6 | `29_AUTORIDAD_DATO_POR_AREA.md` | **quién manda sobre cada dato** |
 | 7 | `03_DECISIONES_Y_RAZONAMIENTO.md` | ADR, razonamiento y descartes |
+
+
+## Nube Local e inteligencia documental — norte 0.2
+
+| Documento | Propósito |
+|---|---|
+| `38_MISION_VISION_NUBE_LOCAL_IA.md` | **misión, visión y principios no negociables** |
+| `39_ARQUITECTURA_NUBE_LOCAL_GRAFO.md` | arquitectura local-first, planos de archivos/conocimiento y grafo |
+| `40_SINCRONIZACION_CONFLICTOS_VERSIONADO.md` | leases, versiones, concurrencia y merge de tres vías |
+| `41_INTELIGENCIA_DOCUMENTAL_APRENDIZAJE.md` | aprendizaje por reglas/aprobaciones, IA local y preguntas humanas |
+| `42_PLAN_PRUEBAS_NUBE_LOCAL_24_CLIENTES.md` | gate automático y prueba física en Latitude |
+| `43_ADR_NORTE_NUBE_LOCAL_GRAFO_IA.md` | decisiones formales para 0.2 |
+| `44_INVESTIGACION_SINCRONIZACION_IA_GRAFOS.md` | investigación comparada y decisiones derivadas |
+
+Estos documentos gobiernan la evolución 0.2. La implementación 0.1 permanece
+como dominio probado debajo: no se reemplaza Tracking Core, se le añade una
+capa local-first de documentos, versiones, aprendizaje y procedencia.
 
 ## Interfaz
 
