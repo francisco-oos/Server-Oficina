@@ -15,8 +15,15 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _as_utc(value: datetime) -> datetime:
+    """Normaliza fechas de BD a UTC entre SQLite y PostgreSQL."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 def active_lease(db: Session, share_id: str, relative_path: str, *, at: datetime | None = None) -> FileLease | None:
-    now = at or _now()
+    now = _as_utc(at or _now())
     path = normalize_relative_path(relative_path).casefold()
     rows = db.scalars(select(FileLease).where(
         FileLease.share_id == share_id,
