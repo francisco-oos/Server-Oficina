@@ -103,6 +103,28 @@ dentro de Server Oficina mientras Syncthing ya resuelva el transporte HOT por
 bloques. Sólo se justificaría otro delta engine en un adapter NAS que demuestre
 una necesidad medible.
 
+### Content-defined chunking: restic/Borg
+
+Syncthing describe cada archivo con bloques de tamaño fijo **dentro de ese
+archivo**; el tamaño aumenta según el tamaño total. Esto funciona muy bien para
+réplica activa, pero una inserción al principio de un archivo puede desplazar
+muchos límites de bloque.
+
+rsync usa checksum rodante para localizar bloques iguales aunque hayan cambiado
+de offset. Restic y Borg van más lejos para backup: usan content-defined
+chunking (Rabin/FastCDC) y deduplicación por hash de chunks, de forma que una
+inserción pequeña puede conservar gran parte de los chunks de una versión
+anterior.
+
+Conclusión: **no implementar un chunk-store propio en Fase 1**. Ya tenemos
+Syncthing para transporte HOT y el NAS para capacidad. Añadir FastCDC/Rabin,
+índice, GC y recuperación sería otro sistema de almacenamiento completo.
+
+Se conserva como optimización futura únicamente si las métricas reales muestran
+que las versiones históricas de archivos grandes están consumiendo espacio de
+forma problemática. En ese caso se evaluará reutilizar un motor de backup como
+Borg/restic antes de escribir uno propio.
+
 ### git-annex
 
 git-annex aporta un concepto muy cercano al problema real: la identidad del
@@ -294,3 +316,7 @@ que el usuario pierda tiempo.
 - Git LFS specification: https://github.com/git-lfs/git-lfs/blob/main/docs/spec.md
 - Git LFS locking API: https://github.com/git-lfs/git-lfs/blob/main/docs/api/locking.md
 - Automerge conflicts/local-first: https://automerge.org/docs/reference/documents/conflicts/
+- Syncthing BEP / block sizes: https://docs.syncthing.net/specs/bep-v1.html
+- rsync algorithm: https://rsync.samba.org/tech_report/
+- restic design / Rabin CDC: https://restic.readthedocs.io/en/v0.18.0/design.html
+- Borg internals / FastCDC: https://borgbackup.readthedocs.io/en/latest/internals.html
