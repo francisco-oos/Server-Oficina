@@ -34,6 +34,13 @@
 15. El sistema adopta patrones probados antes de inventar protocolos propios:
     version vectors/bloques (Syncthing), three-way safe (Mutagen), preflight
     (rclone bisync), placeholders (CFAPI), resumable offsets (tus).
+16. Antes de expulsar una copia local/caché, Server Oficina debe verificar el
+    mínimo de réplicas exigido y cualquier endpoint obligatorio; una ubicación
+    no verificada no cuenta.
+17. `DocumentVersion + ContentLocation` actúan como puntero lógico de
+    contenido: identidad/hash/tamaño por un lado, ubicación física por otro.
+18. CRDT queda reservado para datos nativos colaborativos futuros; no se usa
+    como supuesto solucionador de XLSX/DOCX binarios.
 
 ## Consecuencias
 
