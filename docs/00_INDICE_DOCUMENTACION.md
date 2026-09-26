@@ -21,6 +21,7 @@ responsabilidad para que la raíz de `docs/` permanezca pequeña y navegable.
 - `arquitectura/39_ARQUITECTURA_NUBE_LOCAL_GRAFO.md`
 - `arquitectura/40_SINCRONIZACION_CONFLICTOS_VERSIONADO.md`
 - `arquitectura/41_INTELIGENCIA_DOCUMENTAL_APRENDIZAJE.md`
+- `arquitectura/50_DESCUBRIMIENTO_RED_SIN_IP_FIJA.md` — discovery LAN sin IP fija
 - `arquitectura/15_CONTRATOS_Y_GATES_MODULARES.md`
 - `arquitectura/16_MONOREPO_BACKEND_FRONTEND_OPERACION.md`
 - `arquitectura/18_EVIDENCIA_OPERATIVA_Y_TRAZABILIDAD_DE_FUENTES.md`
