@@ -14,14 +14,15 @@ from typing import Iterable
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.local_cloud_models import ContentLocation, DocumentVersion, StorageEndpoint, StoragePolicy
+from app.db.local_cloud_models import ContentLocation, DocumentVersion, StoragePolicy, StorageRepositoryProfile
+from app.db.models import EvidenceRepository
 
 
 @dataclass(frozen=True)
 class ContentResolution:
     version_id: str
-    endpoint_code: str | None
-    endpoint_type: str | None
+    repository_code: str | None
+    repository_type: str | None
     relative_path: str | None
     state: str
     pinned: bool
@@ -32,7 +33,7 @@ class ContentResolution:
 class StorageDecision:
     policy_code: str | None
     mode: str
-    endpoint_code: str | None
+    repository_code: str | None
     pin_local: bool
     reason: str
 
@@ -92,14 +93,14 @@ def choose_storage_policy(
         return StorageDecision(
             policy_code=policy.code,
             mode=mode,
-            endpoint_code=action.get("endpoint_code"),
+            repository_code=action.get("repository_code"),
             pin_local=bool(action.get("pin_local", False)),
             reason=f"matched:{policy.code}",
         )
     return StorageDecision(
         policy_code=None,
         mode="HOT_REPLICATED",
-        endpoint_code=None,
+        repository_code=None,
         pin_local=False,
         reason="no-policy-safe-default",
     )
@@ -109,7 +110,7 @@ def resolve_version_content(
     db: Session,
     *,
     version_id: str,
-    available_endpoint_codes: set[str] | None = None,
+    available_repository_codes: set[str] | None = None,
 ) -> ContentResolution:
     """Devuelve la mejor ubicación verificable sin inventar disponibilidad."""
     version = db.get(DocumentVersion, version_id)
@@ -117,18 +118,19 @@ def resolve_version_content(
         raise ValueError("Versión documental no encontrada")
 
     rows = db.execute(
-        select(ContentLocation, StorageEndpoint)
-        .join(StorageEndpoint, StorageEndpoint.id == ContentLocation.endpoint_id)
+        select(ContentLocation, EvidenceRepository, StorageRepositoryProfile)
+        .join(EvidenceRepository, EvidenceRepository.id == ContentLocation.repository_id)
+        .outerjoin(StorageRepositoryProfile, StorageRepositoryProfile.repository_id == EvidenceRepository.id)
         .where(
             ContentLocation.version_id == version.id,
             ContentLocation.state == "AVAILABLE",
-            StorageEndpoint.active.is_(True),
+            EvidenceRepository.active.is_(True),
         )
     ).all()
 
     candidates: list[tuple[ContentLocation, StorageEndpoint]] = []
     for location, endpoint in rows:
-        if available_endpoint_codes is not None and endpoint.code not in available_endpoint_codes:
+        if available_repository_codes is not None and endpoint.code not in available_repository_codes:
             continue
         # Una ubicación sólo es elegible si representa exactamente la versión.
         if location.sha256.lower() != version.sha256.lower():
@@ -137,13 +139,13 @@ def resolve_version_content(
             continue
         if location.verified_at is None:
             continue
-        candidates.append((location, endpoint))
+        candidates.append((location, repository, profile))
 
     if not candidates:
         return ContentResolution(
             version_id=version.id,
-            endpoint_code=None,
-            endpoint_type=None,
+            repository_code=None,
+            repository_type=None,
             relative_path=None,
             state="UNAVAILABLE",
             pinned=False,
@@ -156,17 +158,17 @@ def resolve_version_content(
     # remoto desplace una copia local ya verificada.
     candidates.sort(
         key=lambda pair: (
-            pair[1].read_priority,
+            pair[2].read_priority if pair[2] is not None else 100,
             0 if pair[0].pinned else 1,
             role_rank.get(pair[0].role, 50),
             pair[1].code,
         )
     )
-    location, endpoint = candidates[0]
+    location, repository, profile = candidates[0]
     return ContentResolution(
         version_id=version.id,
-        endpoint_code=endpoint.code,
-        endpoint_type=endpoint.endpoint_type,
+        repository_code=endpoint.code,
+        repository_type=endpoint.repository_type,
         relative_path=location.relative_path,
         state="AVAILABLE",
         pinned=location.pinned,
