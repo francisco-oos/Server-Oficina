@@ -25,6 +25,7 @@ def register_version(
     mtime_ns: int | None = None,
     change_kind: str = "MODIFIED",
     parent_version_id: str | None = None,
+    storage_relative_path: str | None = None,
     metadata: dict | None = None,
 ) -> tuple[DocumentRecord, DocumentVersion, bool]:
     path = validate_portable_office_path(relative_path)
@@ -65,6 +66,7 @@ def register_version(
         change_kind=change_kind.upper(),
         source_peer_id=source_peer_id,
         source_user_id=source_user_id,
+        storage_relative_path=storage_relative_path,
         observed_at=datetime.now(timezone.utc),
         analysis_status="PENDING",
         metadata_json=metadata or {},
