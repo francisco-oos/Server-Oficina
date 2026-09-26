@@ -156,3 +156,34 @@ def test_valid_15_day_login_is_not_equal_to_online_presence(client, db):
     assert item["session_valid"] is True
     assert item["online"] is False
     assert item["presence_state"] == "SESSION_VALID_OFFLINE"
+
+
+def test_companion_storage_plan_requires_device_identity_and_hides_storage_paths(client, db):
+    prefix = uuid4().hex[:8]
+    peer, _ = _peer_share(db, prefix)
+    token = issue_peer_credential(db, peer)
+    payload = {
+        "peer_code": peer.code,
+        "filename": "Control.xlsx",
+        "size_bytes": 12345,
+        "area_code": "MATERIAL",
+    }
+
+    denied = client.post(
+        "/api/local-cloud/workstations/storage-plan",
+        json=payload,
+        headers={"X-Server-Oficina-Device-Token": "incorrecto"},
+    )
+    assert denied.status_code == 401
+
+    response = client.post(
+        "/api/local-cloud/workstations/storage-plan",
+        json=payload,
+        headers={"X-Server-Oficina-Device-Token": token},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["peer_id"] == peer.id
+    assert body["action"] == "SYNCTHING_HOT"
+    assert "mount_point" not in body
+    assert "canonical_uri" not in body
