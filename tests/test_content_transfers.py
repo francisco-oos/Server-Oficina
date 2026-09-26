@@ -60,3 +60,22 @@ def test_transfer_rejects_offset_regression_and_bad_final_hash(db):
     begin_verification(db, transfer)
     with pytest.raises(ValueError):
         complete_transfer(db, transfer, observed_sha256="c" * 64, observed_size=1000)
+
+
+def test_restart_during_verification_does_not_restart_upload(db):
+    prefix = uuid4().hex[:8]
+    version, endpoint = _fixture(db, prefix)
+    transfer, _ = begin_transfer(
+        db, transfer_key=f"verify-{prefix}", version_id=version.id,
+        destination_endpoint_id=endpoint.id,
+        temp_relative_path=".partial/v", final_relative_path="v",
+    )
+    start_or_resume(db, transfer)
+    confirm_offset(db, transfer, transfer.total_bytes)
+    begin_verification(db, transfer)
+    attempts = transfer.attempt_count
+
+    resumed = start_or_resume(db, transfer)
+    assert resumed.state == "VERIFYING"
+    assert resumed.confirmed_offset == resumed.total_bytes
+    assert resumed.attempt_count == attempts
