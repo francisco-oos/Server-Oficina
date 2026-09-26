@@ -103,6 +103,41 @@ dentro de Server Oficina mientras Syncthing ya resuelva el transporte HOT por
 bloques. Sólo se justificaría otro delta engine en un adapter NAS que demuestre
 una necesidad medible.
 
+### git-annex
+
+git-annex aporta un concepto muy cercano al problema real: la identidad del
+contenido se separa de la ubicación física y cada repositorio puede declarar
+qué contenido prefiere o exige conservar. Sus reglas `numcopies`,
+`mincopies`, preferred/required content y el rechazo de `drop` cuando no se
+pueden verificar suficientes copias son especialmente útiles.
+
+Conclusión: Server Oficina no adoptará git-annex como motor del usuario, pero sí
+su invariante más valiosa: **no expulsar/purgar una copia si no se verificó que
+quedan las réplicas exigidas por política**.
+
+### Git LFS
+
+Git LFS mantiene en el repositorio un puntero pequeño con OID SHA-256 y tamaño,
+mientras los bytes grandes viven en otro servicio. Su Batch API negocia la
+ubicación/acción concreta para upload/download y su API de locking separa
+reservas de archivo del transporte.
+
+Conclusión: `DocumentVersion + ContentLocation` cumple un papel equivalente al
+puntero lógico: la interfaz trabaja con identidad/hash/tamaño y el
+`Content Resolver` decide el backend. No se adopta Git ni LFS como requisito
+operativo.
+
+### CRDT / Automerge
+
+Los CRDT pueden combinar cambios concurrentes a estructuras finas y conservar
+conflictos de propiedades. Son excelentes para datos nacidos dentro de una app
+local-first.
+
+Conclusión: pueden ser útiles más adelante para notas, formularios o estado de
+interfaz nativo de Server Oficina. **No solucionan de forma segura la edición
+concurrente de un XLSX/DOCX binario arbitrario**; para esos archivos se conserva
+lease + versiones + conflicto + revisión/merge semántico conocido.
+
 ## Arquitectura propuesta: almacenamiento por niveles
 
 ```text
@@ -205,7 +240,9 @@ que el usuario pierda tiempo.
 - escritura directa al NAS usa destino temporal y rename/promote;
 - credenciales de NAS fuera de BD y repo;
 - borrado lógico separado de purge físico;
-- purge sólo cuando existe política y suficientes réplicas verificadas.
+- purge sólo cuando existe política y suficientes réplicas verificadas;
+- la política puede exigir `min_verified_copies` y endpoints obligatorios;
+- una ubicación conocida pero no verificada no cuenta como copia segura.
 
 ## Referencias
 
@@ -224,3 +261,8 @@ que el usuario pierda tiempo.
 - tusd reference server: https://github.com/tus/tusd
 - rsync algorithm: https://rsync.samba.org/tech_report/
 - Microsoft CloudMirror sample: https://github.com/microsoft/Windows-classic-samples/tree/main/Samples/CloudMirror
+- git-annex preferred/required content: https://git-annex.branchable.com/git-annex-preferred-content/
+- git-annex copies/drop safety: https://git-annex.branchable.com/copies/
+- Git LFS specification: https://github.com/git-lfs/git-lfs/blob/main/docs/spec.md
+- Git LFS locking API: https://github.com/git-lfs/git-lfs/blob/main/docs/api/locking.md
+- Automerge conflicts/local-first: https://automerge.org/docs/reference/documents/conflicts/
