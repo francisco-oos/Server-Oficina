@@ -72,6 +72,37 @@ la copia offline.
 Conclusión: sus estados READ/WRITE/HANDLE inspiran nuestro FileLease, pero la
 arquitectura local-first no se convierte en un simple share SMB.
 
+### rclone VFS
+
+El VFS de rclone demuestra otra separación útil: namespace remoto, caché local,
+write-back y descarga por rangos. En modo `full` puede usar archivos dispersos
+y conservar sólo las zonas realmente leídas; además expulsa caché según edad,
+espacio máximo y último acceso.
+
+Conclusión: adoptar **cache budget + LRU/last-access + read-ahead configurable**,
+pero no montar rclone encima de la misma carpeta sincronizada por Syncthing.
+
+### tus / cargas reanudables
+
+El protocolo tus modela una carga grande mediante URL de sesión y
+`Upload-Offset`. Si una red cae, el cliente pregunta el offset y continúa
+desde allí en vez de reiniciar gigabytes desde cero. También define extensión
+de checksum por fragmento.
+
+Conclusión: la futura ruta directa PC→NAS debe tener semántica de transferencia
+reanudable e idempotente. Si el backend NAS no la ofrece nativamente, se
+implementa en el adapter; no se vuelve a copiar el archivo entero por una caída.
+
+### rsync / delta
+
+El algoritmo rsync usa checksum rodante + checksum fuerte para localizar bloques
+reutilizables incluso si se desplazaron dentro del archivo.
+
+Conclusión: es una referencia para deltas grandes, pero **no se reimplementa**
+dentro de Server Oficina mientras Syncthing ya resuelva el transporte HOT por
+bloques. Sólo se justificaría otro delta engine en un adapter NAS que demuestre
+una necesidad medible.
+
 ## Arquitectura propuesta: almacenamiento por niveles
 
 ```text
@@ -158,7 +189,9 @@ que el usuario pierda tiempo.
 - deduplicación por SHA-256 para versiones idénticas;
 - no guardar dos copias en Latitude del mismo contenido;
 - usar bloques del motor de transporte, no inventar otro protocolo;
+- cargas grandes directas deben ser reanudables por offset/chunk;
 - cache LRU/por política sólo para contenido WARM;
+- read-ahead y caché por rangos sólo cuando el backend/placeholder lo soporte;
 - separar metadatos permanentes de bytes cacheables;
 - Synology no replica de vuelta contenido que ya es NAS_PRIMARY salvo que una
   política pida caché/pin.
@@ -186,3 +219,8 @@ que el usuario pierda tiempo.
 - Cloud sync engine/placeholder guide: https://learn.microsoft.com/windows/win32/cfapi/build-a-cloud-file-sync-engine
 - SMB lease algorithm: https://learn.microsoft.com/openspecs/windows_protocols/ms-smb2/d8df943d-6ad7-4b30-9f58-96ae90fc6204
 - Synology Drive On-demand Sync: https://kb.synology.com/
+- rclone VFS cache: https://rclone.org/commands/rclone_mount/
+- tus protocol: https://tus.io/protocols/resumable-upload
+- tusd reference server: https://github.com/tus/tusd
+- rsync algorithm: https://rsync.samba.org/tech_report/
+- Microsoft CloudMirror sample: https://github.com/microsoft/Windows-classic-samples/tree/main/Samples/CloudMirror
