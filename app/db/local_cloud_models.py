@@ -184,3 +184,53 @@ class FileConflict(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     resolved_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+
+
+
+class SyncPeerCredential(Base):
+    """Credencial de emparejamiento del companion; sólo se persiste el hash."""
+
+    __tablename__ = "sync_peer_credentials"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    peer_id: Mapped[str] = mapped_column(ForeignKey("sync_peers.id", ondelete="CASCADE"), unique=True, index=True)
+    secret_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class WorkstationSession(Base):
+    """Quién está usando una PC; no equivale al estado laboral oficial de RRHH."""
+
+    __tablename__ = "workstation_sessions"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    peer_id: Mapped[str] = mapped_column(ForeignKey("sync_peers.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, index=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="ACTIVE", index=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+class SyncFileEvent(Base):
+    """Evento de archivo enviado por el companion con idempotencia por UUID."""
+
+    __tablename__ = "sync_file_events"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    client_event_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    peer_id: Mapped[str] = mapped_column(ForeignKey("sync_peers.id", ondelete="CASCADE"), index=True)
+    workstation_session_id: Mapped[str | None] = mapped_column(ForeignKey("workstation_sessions.id"), nullable=True, index=True)
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    share_id: Mapped[str] = mapped_column(ForeignKey("sync_shares.id", ondelete="CASCADE"), index=True)
+    action: Mapped[str] = mapped_column(String(30), index=True)
+    normalized_path: Mapped[str] = mapped_column(Text, index=True)
+    new_normalized_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sha256_before: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    sha256_after: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, index=True)
+    attribution: Mapped[str] = mapped_column(String(30), default="DEVICE_ONLY", index=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
