@@ -60,9 +60,11 @@ Las personas autorizadas de oficina pueden seguir el conjunto de documentos
 sincronizados aunque pertenezcan a áreas distintas. La propiedad de un área
 determina **autoridad sobre el dato**, no invisibilidad automática.
 
-La sesión de una persona en una computadora aporta presencia digital, autoría y
-contexto operacional. Es una señal complementaria a los estados de RRHH y nunca
-debe inventar asistencia, descanso o incapacidad.
+La sesión de una persona en una computadora aporta identidad de operador y
+autoría. La sesión puede ser válida hasta 15 días, pero **presencia digital
+actual** requiere heartbeat reciente; una sesión válida por sí sola no significa
+que la persona esté en la oficina. Ambas señales complementan a RRHH y nunca
+deben inventar asistencia, descanso o incapacidad.
 
 ## Norte de producto
 
