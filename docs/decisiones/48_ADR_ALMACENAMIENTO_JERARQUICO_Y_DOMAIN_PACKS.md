@@ -45,6 +45,14 @@
     Syncthing con un router NAS dinámico actuando sobre el mismo path.
 20. La apariencia de espacio único se resuelve en el Content Resolver/Companion,
     no superponiendo motores de sincronización.
+21. `EvidenceRepository` es el catálogo único de almacenamiento. Nube Local
+    añade capacidades mediante `StorageRepositoryProfile`; se elimina el
+    concepto redundante de un segundo catálogo StorageEndpoint.
+22. El primer transporte candidato para NAS_DIRECT en la LAN es SMB3 con
+    staging + offset reanudable + verificación propia. Synology Drive/File
+    Station no se asumen como autoridad de locking global.
+23. La integración Synology concreta se mantiene detrás de adapter; cambiar de
+    NAS no modifica DocumentVersion ni el grafo.
 
 ## Consecuencias
 
