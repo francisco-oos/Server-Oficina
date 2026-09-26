@@ -57,7 +57,9 @@ def can_evict_location(
         )
     ).all()
 
-    safe = []
+    # Varias rutas del mismo endpoint NO son réplicas independientes. Para
+    # seguridad contamos como máximo una copia verificada por endpoint físico.
+    safe_by_endpoint: dict[str, tuple[ContentLocation, StorageEndpoint]] = {}
     for location, endpoint in rows:
         if location.verified_at is None:
             continue
@@ -65,12 +67,12 @@ def can_evict_location(
             continue
         if int(location.size_bytes) != int(version.size_bytes):
             continue
-        safe.append((location, endpoint))
+        safe_by_endpoint.setdefault(endpoint.id, (location, endpoint))
 
-    endpoint_codes = {endpoint.code for _, endpoint in safe}
+    endpoint_codes = {endpoint.code for _, endpoint in safe_by_endpoint.values()}
     required = {x for x in (required_endpoint_codes or set()) if x}
     missing = tuple(sorted(required - endpoint_codes))
-    enough = len(safe) >= min_verified_copies
+    enough = len(safe_by_endpoint) >= min_verified_copies
     allowed = enough and not missing
 
     if missing:
@@ -82,7 +84,7 @@ def can_evict_location(
 
     return EvictionDecision(
         allowed=allowed,
-        verified_copies_after=len(safe),
+        verified_copies_after=len(safe_by_endpoint),
         required_copies=min_verified_copies,
         missing_required_endpoints=missing,
         reason=reason,
