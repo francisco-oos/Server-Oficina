@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import require
@@ -156,6 +156,63 @@ def link_peer_share(data: PeerShareIn, db: Session = Depends(get_db), user: User
         row = SyncPeerShare(peer_id=data.peer_id, share_id=data.share_id, access_mode=access); db.add(row)
     db.commit(); db.refresh(row)
     return {"id": row.id, "access_mode": row.access_mode}
+
+
+@router.get("/documents")
+def list_documents(
+    q: str = "",
+    area: str = "",
+    include_deleted: bool = False,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    user: User = Depends(require("localcloud.view")),
+):
+    """Consulta transversal de documentos sincronizados.
+
+    El área propietaria expresa procedencia y autoridad sobre los datos; no se
+    usa como filtro de visibilidad implícito. Todo rol con localcloud.view puede
+    seguir el conjunto documental y filtrar por área.
+    """
+    limit = max(1, min(limit, 500))
+    stmt = select(DocumentRecord)
+    if not include_deleted:
+        stmt = stmt.where(DocumentRecord.deleted.is_(False))
+    if area.strip():
+        stmt = stmt.where(DocumentRecord.owner_area_code == area.strip().upper())
+    if q.strip():
+        term = f"%{q.strip()}%"
+        stmt = stmt.where(or_(
+            DocumentRecord.logical_path.ilike(term),
+            DocumentRecord.document_family.ilike(term),
+        ))
+    documents = db.scalars(stmt.order_by(DocumentRecord.logical_path).limit(limit)).all()
+    result = []
+    for document in documents:
+        latest = db.scalar(
+            select(DocumentVersion)
+            .where(DocumentVersion.document_id == document.id)
+            .order_by(DocumentVersion.observed_at.desc())
+        )
+        result.append({
+            "id": document.id,
+            "path": document.logical_path,
+            "owner_area_code": document.owner_area_code,
+            "document_family": document.document_family,
+            "deleted": document.deleted,
+            "latest_version": None if latest is None else {
+                "id": latest.id,
+                "sha256": latest.sha256,
+                "size_bytes": latest.size_bytes,
+                "change_kind": latest.change_kind,
+                "observed_at": latest.observed_at,
+                "analysis_status": latest.analysis_status,
+            },
+        })
+    return {
+        "visibility": "TRANSVERSAL_AUTHORIZED_OFFICE",
+        "authority_note": "owner_area_code define procedencia/autoridad, no ocultamiento",
+        "items": result,
+    }
 
 
 @router.post("/document-versions")

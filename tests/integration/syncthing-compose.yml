@@ -1,0 +1,49 @@
+services:
+  hub:
+    image: syncthing/syncthing:2.1.5
+    hostname: hub
+    command:
+      - --gui-address=0.0.0.0:8384
+      - --gui-apikey=server-oficina-integration
+      - --no-browser
+      - --no-upgrade
+    ports:
+      - "18384:8384"
+    volumes:
+      - ${IT_ROOT}/hub-home:/var/syncthing
+      - ${IT_ROOT}/hub:/sync
+    networks: [syncnet]
+
+  pc1:
+    image: syncthing/syncthing:2.1.5
+    hostname: pc1
+    command:
+      - --gui-address=0.0.0.0:8384
+      - --gui-apikey=server-oficina-integration
+      - --no-browser
+      - --no-upgrade
+    ports:
+      - "18385:8384"
+    volumes:
+      - ${IT_ROOT}/pc1-home:/var/syncthing
+      - ${IT_ROOT}/pc1:/sync
+    networks: [syncnet]
+
+  pc2:
+    image: syncthing/syncthing:2.1.5
+    hostname: pc2
+    command:
+      - --gui-address=0.0.0.0:8384
+      - --gui-apikey=server-oficina-integration
+      - --no-browser
+      - --no-upgrade
+    ports:
+      - "18386:8384"
+    volumes:
+      - ${IT_ROOT}/pc2-home:/var/syncthing
+      - ${IT_ROOT}/pc2:/sync
+    networks: [syncnet]
+
+networks:
+  syncnet:
+    driver: bridge

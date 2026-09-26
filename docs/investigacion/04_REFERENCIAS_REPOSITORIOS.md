@@ -60,8 +60,50 @@ Antes de tomar código de una referencia futura:
 | STPS SIRCE · https://www.gob.mx/stps/acciones-y-programas/stps-04-002-presentacion-de-listas-de-constancias-o-de-competencias-laborales | contexto de planes/cursos/constancias de capacitación | orientar campos/evidencia, no prometer cumplimiento ni envío automático |
 | NOM-017-STPS-2024 · https://dof.gob.mx/normasOficiales/9496/stps/stps.html | ciclo de EPP: selección, uso, revisión, reposición, mantenimiento, resguardo, disposición | informar roadmap EPP/Asset; sin motor legal automático |
 
-Detalle de investigación: `docs/12_INVESTIGACION_CICLO_VIDA_ACTIVOS.md` y `docs/13_INVESTIGACION_RRHH_OPERATIVO.md`.
+Detalle de investigación: `docs/investigacion/12_INVESTIGACION_CICLO_VIDA_ACTIVOS.md` y `docs/investigacion/13_INVESTIGACION_RRHH_OPERATIVO.md`.
 
 ## Evidencia operativa interna
 
-La release sólo conserva metadatos y conclusiones de diseño de documentos propios revisados; no empaqueta sus datos sensibles. Ver `docs/18_EVIDENCIA_OPERATIVA_Y_TRAZABILIDAD_DE_FUENTES.md` y `references/internal_evidence.json`.
+La release sólo conserva metadatos y conclusiones de diseño de documentos propios revisados; no empaqueta sus datos sensibles. Ver `docs/arquitectura/18_EVIDENCIA_OPERATIVA_Y_TRAZABILIDAD_DE_FUENTES.md` y `references/internal_evidence.json`.
+
+
+## Sincronización, navegación y agentes estudiados en 0.2
+
+| Fuente | Patrón aprendido | Decisión |
+|---|---|---|
+| https://github.com/syncthing/syncthing | Device ID, version vectors, bloques, descubrimiento local, conflictos y REST API | **Adoptado como transporte HOT**, nunca como fuente de verdad ni auditoría humana |
+| https://github.com/bcpierce00/unison | reconciliación contra ancestro/archivo previo | patrón para BASE/LEFT/RIGHT; no segundo motor sobre la misma carpeta |
+| https://github.com/mutagen-io/mutagen | two-way-safe, scan/reconcile/stage/apply | adoptar fail-safe y separación de fases; no dependencia |
+| https://github.com/rclone/rclone | bisync preflight/check-access y VFS cache/read-ahead | patrones para adapter NAS, caché y límites de daño; no sincronizador concurrente del árbol HOT |
+| https://github.com/nextcloud/desktop | conflicto explícito y archivos virtuales | referencia UX; no desplegar una segunda plataforma |
+| https://github.com/haiwen/seafile-client | conflicto preservado y experiencia de locking | referencia UX/coord. de edición |
+| https://github.com/tus/tusd | cargas HTTP reanudables por sesión/offset | referencia para subida directa PC→NAS; aún no dependencia |
+| https://github.com/microsoft/Windows-classic-samples/tree/main/Samples/CloudMirror | CFAPI, sync root, placeholders e hidratación | prototipo de referencia para futuro Companion Windows; la muestra no es código productivo |
+| https://github.com/ajeetdsouza/zoxide | frecency y ranking de rutas usadas | inspiración para Smart Navigator; no sirve como buscador de contenido documental |
+| https://github.com/NousResearch/hermes-agent | runtime de agente, herramientas, skills, memoria/learning loop y backends aislables | estudiar separación Agent Runtime/Tool Registry/Skills; **no** convertir su memoria del agente en verdad de oficina |
+| https://github.com/tus/tusd | pausa/reanudación sin retransmitir lo ya confirmado | semántica adoptada en `ContentTransfer`; backend físico aún por implementar |
+| https://git-annex.branchable.com/ | contenido por hash, ubicación distribuida, preferred/required content, numcopies/mincopies y drop seguro | adoptar guardas de réplica y política de ubicación; no exponer Git al usuario |
+| https://github.com/git-lfs/git-lfs | puntero pequeño OID+size, objetos grandes externos, Batch API y locks | patrón para identidad lógica separada de ubicación; no dependencia Git |
+| https://github.com/automerge/automerge | CRDT local-first y merge de estado estructurado | candidato futuro sólo para datos nativos colaborativos; no para fusionar Office binario |
+
+El detalle de sincronización está en
+`docs/investigacion/46_INVESTIGACION_SINCRONIZACION_ROBUSTA.md` y
+`docs/investigacion/47_ALMACENAMIENTO_JERARQUICO_ARCHIVOS_GRANDES.md`.
+
+La separación Core/Domain Pack se gobierna en
+`docs/vision/49_NUCLEO_REUTILIZABLE_Y_DOMAIN_PACKS.md`.
+
+### Snapshots externos revisados en esta fase
+
+| Repositorio | Commit revisado |
+|---|---|
+| `syncthing/syncthing` | `94c3c1cdef718d568686620cbff268eeaaf2c87d` |
+| `mutagen-io/mutagen` | `6ccfeaaf4dfd261e59ef9aac56e3c157b62e605b` |
+| `rclone/rclone` | `9dc8b71ae99496460f07373674609571918bfb9c` |
+| `ajeetdsouza/zoxide` | `09a18b4424b3f1033094ffd97da6d47585e38259` |
+| `NousResearch/hermes-agent` | `f077152871798b8a666daf48333d123549d10672` |
+| `tus/tusd` | `c9d174d0e20c69f24e9785d2f639df4da1c4fdc5` |
+| `git-lfs/git-lfs` | `0043a645047926f4bd7f7091299095528253d575` |
+| `automerge/automerge` | `ddbff535407e4d28cd2a82eaf6c6add08caa3bdd` |
+
+Los commits sólo fijan el punto estudiado; no implican dependencia ni copia de código.

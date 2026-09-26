@@ -2,20 +2,17 @@
 
 ## Objetivo
 
-Los archivos pesados no deben convertir la Latitude de 128 GB en repositorio único. El patrón recomendado es:
+Los archivos pesados no deben convertir la Latitude en repositorio único ni atravesarla dos veces sin necesidad. El patrón actual distingue archivos HOT replicados y contenido NAS_DIRECT:
 
 ```text
-Windows / teléfono / app de campo
+Windows / Companion
         │
-        ├── carga mediante Server Oficina
-        │              │
-        │              ▼
-        │        NAS/SMB configurado
+        ├── HOT ── Syncthing ──► Latitude
         │
-        └── copia directa al NAS / Organizador existente
-                       │
-                       ▼
-              registrar/indexar en Server Oficina
+        └── NAS_DIRECT ─────────► NAS/SMB
+                                  │
+                                  └─► Server Oficina registra
+                                      versión, hash y ubicación
 ```
 
 Server Oficina es el **índice relacional y auditable**; el NAS puede seguir siendo el almacén principal.
@@ -80,3 +77,34 @@ La UI recibe el archivo y lo escribe **en streaming por bloques** dentro del rep
 - indexación de sidecars DJI (`MRK`, `SRT`, `JSON`, `XML`);
 - clasificación asistida planificar→revisar→ejecutar, compatible con el principio del Organizador de Evidencias;
 - deduplicación física opcional por hash sólo después de revisión humana.
+
+
+## Un único catálogo de almacenamiento
+
+`EvidenceRepository` es la identidad canónica de un almacenamiento LOCAL/SMB.
+Nube Local no mantiene un segundo catálogo de «endpoints». Sólo agrega:
+
+- `StorageRepositoryProfile`: capacidades/prioridades;
+- `ContentLocation`: dónde existe una DocumentVersion verificada;
+- `StoragePolicy`: cuándo usar HOT, caché o NAS_DIRECT;
+- `ContentTransfer`: progreso reanudable por offset.
+
+Esto evita duplicar NAS/rutas/configuración entre Evidencias y Nube Local.
+
+## Archivos grandes
+
+Para contenido que la política marque `NAS_DIRECT`, el objetivo es que el
+Companion escriba directamente al repositorio de capacidad, primero a staging,
+reanude una transferencia cortada desde el último offset confirmado y sólo
+publique la ubicación después de verificar SHA-256 + tamaño.
+
+No hay un límite de MB/GB hardcodeado.
+
+## Acceso transparente futuro
+
+El Content Resolver separa identidad documental de ruta física. La fase futura
+del Companion usará placeholders de Windows CFAPI para que Explorer presente el
+mismo namespace aunque un archivo esté en caché local, en el hub o sólo en NAS.
+
+Diseño detallado:
+`docs/arquitectura/51_SYNOLOGY_ARCHIVOS_PESADOS_Y_ACCESO_TRANSPARENTE.md`.

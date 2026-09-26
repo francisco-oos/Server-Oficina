@@ -24,6 +24,7 @@ from app.api.routes_dashboard import router as dashboard_router
 from app.api.routes_dossier import router as dossier_router
 from app.api.routes_local_cloud import router as local_cloud_router
 from app.api.routes_transport import router as transport_router
+from app.api.routes_workstations import router as workstations_router
 from app.db import local_cloud_models as _local_cloud_models  # noqa: F401 -- registra tablas aditivas
 from app.db.base import Base, SessionLocal, engine
 from app.services.bootstrap import ensure_operational_catalogs, ensure_rbac
@@ -48,6 +49,7 @@ app.include_router(dashboard_router)
 app.include_router(dossier_router)
 app.include_router(transport_router)
 app.include_router(local_cloud_router)
+app.include_router(workstations_router)
 
 static_dir = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=static_dir), name="static")

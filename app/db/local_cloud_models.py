@@ -184,3 +184,165 @@ class FileConflict(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     resolved_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+
+
+
+class SyncPeerCredential(Base):
+    """Credencial de emparejamiento del companion; sólo se persiste el hash."""
+
+    __tablename__ = "sync_peer_credentials"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    peer_id: Mapped[str] = mapped_column(ForeignKey("sync_peers.id", ondelete="CASCADE"), unique=True, index=True)
+    secret_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class WorkstationSession(Base):
+    """Quién está usando una PC; no equivale al estado laboral oficial de RRHH."""
+
+    __tablename__ = "workstation_sessions"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    peer_id: Mapped[str] = mapped_column(ForeignKey("sync_peers.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, index=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="ACTIVE", index=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+class SyncFileEvent(Base):
+    """Evento de archivo enviado por el companion con idempotencia por UUID."""
+
+    __tablename__ = "sync_file_events"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    client_event_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    peer_id: Mapped[str] = mapped_column(ForeignKey("sync_peers.id", ondelete="CASCADE"), index=True)
+    workstation_session_id: Mapped[str | None] = mapped_column(ForeignKey("workstation_sessions.id"), nullable=True, index=True)
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    share_id: Mapped[str] = mapped_column(ForeignKey("sync_shares.id", ondelete="CASCADE"), index=True)
+    action: Mapped[str] = mapped_column(String(30), index=True)
+    normalized_path: Mapped[str] = mapped_column(Text, index=True)
+    new_normalized_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sha256_before: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    sha256_after: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, index=True)
+    attribution: Mapped[str] = mapped_column(String(30), default="DEVICE_ONLY", index=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+
+
+class StorageRepositoryProfile(Base):
+    """Capacidades operativas de un EvidenceRepository ya existente.
+
+    EvidenceRepository sigue siendo la identidad única del almacenamiento. Esta
+    tabla sólo añade capacidades necesarias para Nube Local y evita mantener un
+    catálogo paralelo de NAS/SSD/endpoints.
+    """
+
+    __tablename__ = "storage_repository_profiles"
+    repository_id: Mapped[str] = mapped_column(
+        ForeignKey("evidence_repositories.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    writable: Mapped[bool] = mapped_column(Boolean, default=True)
+    supports_direct_upload: Mapped[bool] = mapped_column(Boolean, default=False)
+    supports_range_read: Mapped[bool] = mapped_column(Boolean, default=False)
+    read_priority: Mapped[int] = mapped_column(Integer, default=100)
+    write_priority: Mapped[int] = mapped_column(Integer, default=100)
+    transport_owner: Mapped[str] = mapped_column(String(40), default="SERVER_OFICINA")
+    direct_upload_mode: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    capabilities_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+
+class StorageRepositoryHealth(Base):
+    """Estado operativo efímero de un EvidenceRepository.
+
+    Se separa de StorageRepositoryProfile para no mezclar configuración con
+    disponibilidad observada. Un repositorio puede seguir siendo válido aunque
+    esté temporalmente fuera de línea.
+    """
+
+    __tablename__ = "storage_repository_health"
+    repository_id: Mapped[str] = mapped_column(
+        ForeignKey("evidence_repositories.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    state: Mapped[str] = mapped_column(String(24), default="UNKNOWN", index=True)
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_failure_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    detail_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+class ContentLocation(Base):
+    """Ubicación verificable de los bytes de una DocumentVersion."""
+
+    __tablename__ = "content_locations"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    version_id: Mapped[str] = mapped_column(ForeignKey("document_versions.id", ondelete="CASCADE"), index=True)
+    repository_id: Mapped[str] = mapped_column(
+        ForeignKey("evidence_repositories.id", ondelete="CASCADE"), index=True
+    )
+    relative_path: Mapped[str] = mapped_column(Text)
+    role: Mapped[str] = mapped_column(String(30), default="REPLICA", index=True)
+    state: Mapped[str] = mapped_column(String(30), default="PENDING", index=True)
+    sha256: Mapped[str] = mapped_column(String(64), index=True)
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_accessed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    __table_args__ = (
+        UniqueConstraint(
+            "version_id", "repository_id", "relative_path",
+            name="uq_content_location_version_repository_path",
+        ),
+    )
+
+
+class StoragePolicy(Base):
+    """Regla configurable de ubicación/caché; evita umbrales mágicos en código."""
+
+    __tablename__ = "storage_policies"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    code: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(180))
+    priority: Mapped[int] = mapped_column(Integer, default=100, index=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    selector_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    action_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+
+class ContentTransfer(Base):
+    """Sesión reanudable para mover una versión entre endpoints físicos."""
+
+    __tablename__ = "content_transfers"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    transfer_key: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    version_id: Mapped[str] = mapped_column(ForeignKey("document_versions.id", ondelete="CASCADE"), index=True)
+    source_repository_id: Mapped[str | None] = mapped_column(ForeignKey("evidence_repositories.id"), nullable=True, index=True)
+    destination_repository_id: Mapped[str] = mapped_column(ForeignKey("evidence_repositories.id"), index=True)
+    state: Mapped[str] = mapped_column(String(30), default="PENDING", index=True)
+    expected_sha256: Mapped[str] = mapped_column(String(64), index=True)
+    total_bytes: Mapped[int] = mapped_column(Integer)
+    confirmed_offset: Mapped[int] = mapped_column(Integer, default=0)
+    temp_relative_path: Mapped[str] = mapped_column(Text)
+    final_relative_path: Mapped[str] = mapped_column(Text)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)

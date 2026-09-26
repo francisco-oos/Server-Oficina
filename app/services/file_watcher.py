@@ -11,8 +11,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.local_cloud_models import DocumentRecord, DocumentVersion, SyncShare
+from app.services.content_store import ContentStore
 from app.services.document_registry import register_version
-from app.services.sync_core import normalize_relative_path
+from app.services.sync_conflicts import parse_syncthing_conflict_path
+from app.services.sync_path_policy import PathCollisionError, portable_path_key, validate_portable_office_path
 
 IGNORED_SUFFIXES = {".tmp", ".partial", ".part", ".swp"}
 
@@ -29,6 +31,8 @@ def _ignored(relative: Path) -> bool:
         return True
     if relative.name.startswith("~$"):
         return True
+    if relative.name.startswith(".syncthing.") or relative.name.startswith("~syncthing~"):
+        return True
     return relative.suffix.lower() in IGNORED_SUFFIXES
 
 
@@ -44,8 +48,11 @@ def snapshot(root: Path) -> dict[str, FileObservation]:
         if _ignored(relative):
             continue
         stat = path.stat()
-        rel = normalize_relative_path(relative.as_posix())
-        out[rel.casefold()] = FileObservation(rel, stat.st_size, stat.st_mtime_ns)
+        rel = validate_portable_office_path(relative.as_posix())
+        key = portable_path_key(rel)
+        if key in out and out[key].relative_path != rel:
+            raise PathCollisionError(f"Colisión Windows/Linux: {out[key].relative_path} <> {rel}")
+        out[key] = FileObservation(rel, stat.st_size, stat.st_mtime_ns)
     return out
 
 
@@ -76,12 +83,13 @@ def ingest_stable_snapshot(
     root: Path,
     stable: Iterable[FileObservation],
     source_peer_id: str | None = None,
+    content_store: ContentStore | None = None,
 ) -> int:
     count = 0
     for observation in stable:
         document = db.scalar(select(DocumentRecord).where(
             DocumentRecord.share_id == share.id,
-            DocumentRecord.normalized_path == observation.relative_path.casefold(),
+            DocumentRecord.normalized_path == portable_path_key(observation.relative_path),
         ))
         latest = None
         if document:
@@ -96,7 +104,22 @@ def ingest_stable_snapshot(
         except ValueError as exc:
             raise ValueError("Archivo fuera de la raíz aprobada") from exc
         digest = sha256_file(path)
-        _, _, created = register_version(
+        stored_path = None
+        if content_store is not None:
+            stored = content_store.archive_file(path, expected_sha256=digest)
+            stored_path = stored.relative_path
+        conflict = parse_syncthing_conflict_path(observation.relative_path)
+        metadata = {
+            "scanner": "stable-two-pass",
+            "content_archived": bool(stored_path),
+            "syncthing_conflict": bool(conflict),
+        }
+        if conflict:
+            metadata["conflict_of"] = conflict.original_path
+            metadata["conflict_modified_by"] = conflict.modified_by
+            metadata["conflict_observed_name"] = conflict.conflict_path
+
+        document, version, created = register_version(
             db,
             share=share,
             relative_path=observation.relative_path,
@@ -104,9 +127,18 @@ def ingest_stable_snapshot(
             size_bytes=observation.size_bytes,
             mtime_ns=observation.mtime_ns,
             source_peer_id=source_peer_id,
-            change_kind="MODIFIED",
-            metadata={"scanner": "stable-two-pass"},
+            change_kind="CONFLICT" if conflict else "MODIFIED",
+            storage_relative_path=stored_path,
+            metadata=metadata,
         )
+        if conflict:
+            document.metadata_json = {
+                **(document.metadata_json or {}),
+                "syncthing_conflict": True,
+                "conflict_of": conflict.original_path,
+            }
+            version.analysis_status = "CONFLICT_REVIEW"
+            db.commit()
         count += int(created)
     return count
 
