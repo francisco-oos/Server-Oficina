@@ -12,7 +12,7 @@ import hmac
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import load_settings
@@ -64,7 +64,7 @@ def issue_peer_credential(db: Session, peer: SyncPeer) -> str:
 
 def authenticate_peer(db: Session, *, peer_code: str, raw_secret: str) -> SyncPeer | None:
     peer = db.scalar(select(SyncPeer).where(
-        SyncPeer.code == peer_code.strip().upper(),
+        func.upper(SyncPeer.code) == peer_code.strip().upper(),
         SyncPeer.active.is_(True),
         SyncPeer.trusted.is_(True),
     ))
