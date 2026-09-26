@@ -94,7 +94,7 @@ def test_offline_nas_keeps_source_local_instead_of_falling_back_silently(db):
     assert plan.action == "KEEP_LOCAL_PENDING_NAS"
     assert plan.repository_code == nas.code
     assert plan.pin_local is True
-    assert plan.reason == "repository-not-online"
+    assert plan.reason == "repository-not-recently-online"
 
 
 def test_repository_without_direct_upload_never_gets_direct_plan(db):
@@ -110,3 +110,23 @@ def test_repository_without_direct_upload_never_gets_direct_plan(db):
     )
     assert plan.action == "KEEP_LOCAL_PENDING_NAS"
     assert plan.reason == "repository-does-not-support-direct-upload"
+
+
+def test_stale_online_nas_is_not_used_for_direct_upload(db):
+    prefix = uuid4().hex[:8]
+    nas = _nas(db, prefix, online=True)
+    _policy(db, prefix, nas.code)
+
+    health = db.get(StorageRepositoryHealth, nas.id)
+    health.checked_at = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    db.commit()
+
+    plan = plan_content_placement(
+        db,
+        filename="video.bin",
+        size_bytes=2_000_000,
+        document_family=f"FAMILY-{prefix}",
+        health_stale_after_seconds=60,
+    )
+    assert plan.action == "KEEP_LOCAL_PENDING_NAS"
+    assert plan.reason == "repository-not-recently-online"
