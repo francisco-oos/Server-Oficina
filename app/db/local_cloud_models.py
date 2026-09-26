@@ -237,27 +237,28 @@ class SyncFileEvent(Base):
 
 
 
-class StorageEndpoint(Base):
-    """Ubicación física intercambiable capaz de almacenar contenido documental.
 
-    El endpoint NO es la identidad del documento. Puede ser el SSD del hub, un
-    NAS/Synology u otro backend futuro. Las decisiones de tamaño/caché viven en
-    StoragePolicy y no se hardcodean en el servicio.
+class StorageRepositoryProfile(Base):
+    """Capacidades operativas de un EvidenceRepository ya existente.
+
+    EvidenceRepository sigue siendo la identidad única del almacenamiento. Esta
+    tabla sólo añade capacidades necesarias para Nube Local y evita mantener un
+    catálogo paralelo de NAS/SSD/endpoints.
     """
 
-    __tablename__ = "storage_endpoints"
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
-    code: Mapped[str] = mapped_column(String(80), unique=True, index=True)
-    display_name: Mapped[str] = mapped_column(String(180))
-    endpoint_type: Mapped[str] = mapped_column(String(40), index=True)
-    root_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
-    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    __tablename__ = "storage_repository_profiles"
+    repository_id: Mapped[str] = mapped_column(
+        ForeignKey("evidence_repositories.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
     writable: Mapped[bool] = mapped_column(Boolean, default=True)
     supports_direct_upload: Mapped[bool] = mapped_column(Boolean, default=False)
     supports_range_read: Mapped[bool] = mapped_column(Boolean, default=False)
     read_priority: Mapped[int] = mapped_column(Integer, default=100)
     write_priority: Mapped[int] = mapped_column(Integer, default=100)
-    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    transport_owner: Mapped[str] = mapped_column(String(40), default="SERVER_OFICINA")
+    direct_upload_mode: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    capabilities_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
 
 class ContentLocation(Base):
@@ -266,7 +267,9 @@ class ContentLocation(Base):
     __tablename__ = "content_locations"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     version_id: Mapped[str] = mapped_column(ForeignKey("document_versions.id", ondelete="CASCADE"), index=True)
-    endpoint_id: Mapped[str] = mapped_column(ForeignKey("storage_endpoints.id", ondelete="CASCADE"), index=True)
+    repository_id: Mapped[str] = mapped_column(
+        ForeignKey("evidence_repositories.id", ondelete="CASCADE"), index=True
+    )
     relative_path: Mapped[str] = mapped_column(Text)
     role: Mapped[str] = mapped_column(String(30), default="REPLICA", index=True)
     state: Mapped[str] = mapped_column(String(30), default="PENDING", index=True)
@@ -278,8 +281,8 @@ class ContentLocation(Base):
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     __table_args__ = (
         UniqueConstraint(
-            "version_id", "endpoint_id", "relative_path",
-            name="uq_content_location_version_endpoint_path",
+            "version_id", "repository_id", "relative_path",
+            name="uq_content_location_version_repository_path",
         ),
     )
 
@@ -306,8 +309,8 @@ class ContentTransfer(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     transfer_key: Mapped[str] = mapped_column(String(128), unique=True, index=True)
     version_id: Mapped[str] = mapped_column(ForeignKey("document_versions.id", ondelete="CASCADE"), index=True)
-    source_endpoint_id: Mapped[str | None] = mapped_column(ForeignKey("storage_endpoints.id"), nullable=True, index=True)
-    destination_endpoint_id: Mapped[str] = mapped_column(ForeignKey("storage_endpoints.id"), index=True)
+    source_repository_id: Mapped[str | None] = mapped_column(ForeignKey("evidence_repositories.id"), nullable=True, index=True)
+    destination_repository_id: Mapped[str] = mapped_column(ForeignKey("evidence_repositories.id"), index=True)
     state: Mapped[str] = mapped_column(String(30), default="PENDING", index=True)
     expected_sha256: Mapped[str] = mapped_column(String(64), index=True)
     total_bytes: Mapped[int] = mapped_column(Integer)
