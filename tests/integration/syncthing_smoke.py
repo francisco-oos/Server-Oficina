@@ -69,6 +69,15 @@ def file_bytes(node: str, relative: str) -> bytes | None:
     return path.read_bytes() if path.is_file() else None
 
 
+def atomic_write(node: str, relative: str, data: bytes):
+    """Escritura por reemplazo atómico para evitar artefactos de UID del contenedor."""
+    target = NODES[node][1] / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temp = target.parent / f".it-write-{os.getpid()}-{time.time_ns()}"
+    temp.write_bytes(data)
+    os.replace(temp, target)
+
+
 def wait_content(relative: str, expected: bytes, nodes=("hub", "pc1", "pc2")):
     for node in nodes:
         wait_until(
@@ -147,20 +156,19 @@ def compose(*args: str):
 
 def test_basic_create_modify():
     payload = b"Server Oficina: primera version\n"
-    path = NODES["pc1"][1] / "creacion.txt"
-    path.write_bytes(payload)
+    atomic_write("pc1", "creacion.txt", payload)
     scan("pc1")
     wait_content("creacion.txt", payload)
 
     updated = b"Server Oficina: segunda version desde pc2\n"
-    (NODES["pc2"][1] / "creacion.txt").write_bytes(updated)
+    atomic_write("pc2", "creacion.txt", updated)
     scan("pc2")
     wait_content("creacion.txt", updated)
 
 
 def test_rename():
     old = NODES["pc1"][1] / "rename-old.txt"
-    old.write_bytes(b"rename-safe")
+    atomic_write("pc1", "rename-old.txt", b"rename-safe")
     scan("pc1")
     wait_content("rename-old.txt", b"rename-safe")
 
@@ -172,7 +180,7 @@ def test_rename():
 
 def test_delete_and_remote_versioning():
     path = NODES["pc1"][1] / "delete-me.txt"
-    path.write_bytes(b"contenido que debe poder recuperarse")
+    atomic_write("pc1", "delete-me.txt", b"contenido que debe poder recuperarse")
     scan("pc1")
     wait_content("delete-me.txt", b"contenido que debe poder recuperarse")
 
@@ -191,7 +199,7 @@ def test_delete_and_remote_versioning():
 def test_offline_conflict_preserves_both():
     base = b"BASE\n"
     target1 = NODES["pc1"][1] / "concurrent.txt"
-    target1.write_bytes(base)
+    atomic_write("pc1", "concurrent.txt", base)
     scan("pc1")
     wait_content("concurrent.txt", base)
 
@@ -199,8 +207,8 @@ def test_offline_conflict_preserves_both():
     try:
         left = b"CAMBIO-PC1\n"
         right = b"CAMBIO-PC2\n"
-        target1.write_bytes(left)
-        (NODES["pc2"][1] / "concurrent.txt").write_bytes(right)
+        atomic_write("pc1", "concurrent.txt", left)
+        atomic_write("pc2", "concurrent.txt", right)
         scan("pc1")
         scan("pc2")
         time.sleep(2)
@@ -244,7 +252,7 @@ def test_restart_and_batch():
     wait_api("pc2")
 
     marker = b"despues-del-reinicio"
-    (NODES["pc1"][1] / "post-restart.txt").write_bytes(marker)
+    atomic_write("pc1", "post-restart.txt", marker)
     scan("pc1")
     wait_content("post-restart.txt", marker)
 
@@ -253,7 +261,7 @@ def test_large_file_hash():
     block = bytes(range(256))
     payload = block * (4 * 1024 * 1024 // len(block))
     expected = hashlib.sha256(payload).hexdigest()
-    (NODES["pc1"][1] / "4MiB.bin").write_bytes(payload)
+    atomic_write("pc1", "4MiB.bin", payload)
     scan("pc1")
     wait_content("4MiB.bin", payload)
     for node in NODES:
