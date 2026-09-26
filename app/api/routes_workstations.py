@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """API del companion de escritorio: emparejamiento, presencia y auditoría."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import require
+from app.core.config import load_settings
 from app.db.base import get_db
 from app.db.local_cloud_models import SyncPeer, WorkstationSession
 from app.db.models import User
@@ -119,6 +120,7 @@ def active_workstations(
     user: User = Depends(require("localcloud.view")),
 ):
     now = datetime.now(timezone.utc)
+    online_window = timedelta(minutes=max(1, load_settings().workstation_online_minutes))
     rows = db.scalars(select(WorkstationSession).where(
         WorkstationSession.status == "ACTIVE"
     ).order_by(WorkstationSession.last_seen_at.desc())).all()
@@ -127,6 +129,8 @@ def active_workstations(
         expires = row.expires_at if row.expires_at.tzinfo else row.expires_at.replace(tzinfo=timezone.utc)
         if expires <= now or row.ended_at:
             continue
+        last_seen = row.last_seen_at if row.last_seen_at.tzinfo else row.last_seen_at.replace(tzinfo=timezone.utc)
+        online = last_seen >= now - online_window
         peer = db.get(SyncPeer, row.peer_id)
         operator = db.get(User, row.user_id)
         result.append({
@@ -138,10 +142,14 @@ def active_workstations(
             "started_at": row.started_at,
             "last_seen_at": row.last_seen_at,
             "expires_at": row.expires_at,
+            "session_valid": True,
+            "online": online,
+            "presence_state": "ONLINE_RECENT" if online else "SESSION_VALID_OFFLINE",
         })
     return {
         "presence_scope": "DIGITAL_WORKSTATION_ONLY",
-        "note": "No sustituye asistencia/estado oficial de RRHH.",
+        "online_window_minutes": max(1, load_settings().workstation_online_minutes),
+        "note": "Login válido identifica operador; heartbeat reciente indica presencia digital. No sustituye RRHH.",
         "items": result,
     }
 
