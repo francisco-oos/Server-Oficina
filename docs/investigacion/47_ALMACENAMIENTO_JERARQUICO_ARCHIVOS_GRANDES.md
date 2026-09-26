@@ -178,6 +178,34 @@ Ejemplos:
 - video de evidencia de varios GB → NAS_PRIMARY + placeholder.
 - archivo crítico marcado «Mantener sin conexión» → LOCAL_PINNED aunque sea grande.
 
+## Límite importante: no mezclar routing dinámico dentro de una carpeta Syncthing
+
+`.stignore` decide por patrones de ruta/nombre y es configuración local. No es
+un planificador dinámico por tamaño, frecuencia, capacidad o disponibilidad de
+NAS.
+
+Por eso **no** se intentará una carrera de este tipo:
+
+```text
+guardar archivo grande
+├─ Syncthing empieza a enviarlo al hub
+└─ Companion decide al mismo tiempo enviarlo al NAS
+```
+
+Eso duplicaría tráfico y crearía estados difíciles de razonar.
+
+Hasta disponer del provider CFAPI, las zonas físicas se mantienen separadas por
+responsabilidad. La UI puede mostrarlas como un único espacio lógico, pero un
+path físico pertenece a un solo motor de escritura/sincronización.
+
+Regla:
+
+> **un namespace físico, un propietario de transporte.**
+
+El conjunto HOT pertenece a Syncthing. El contenido NAS_DIRECT pertenece al
+adapter de almacenamiento. El futuro Companion CFAPI será quien pueda presentar
+ambos de forma transparente dentro del mismo namespace visual.
+
 ## Subida directa de archivos pesados
 
 Para evitar PC → Latitude → NAS duplicando tráfico y espacio:
