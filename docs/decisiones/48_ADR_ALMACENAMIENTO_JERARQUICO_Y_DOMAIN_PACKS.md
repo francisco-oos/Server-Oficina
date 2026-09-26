@@ -25,6 +25,15 @@
     del LLM. Se modela como Domain Pack/versiones de configuración.
 11. El Core reusable debe poder ejecutar otros perfiles de oficina; el paquete
     actual de Adquisición Sísmica conserva sus módulos y vocabulario propios.
+12. Las cargas directas de archivos grandes deben ser reanudables e idempotentes
+    por sesión/offset; una caída de Wi-Fi no obliga a retransmitir desde cero.
+13. El canal HOT y el canal NAS no compiten: nunca se ejecutan dos motores
+    bidireccionales sobre el mismo namespace físico.
+14. Cache y read-ahead son recursos con presupuesto configurable; nunca se
+    interpreta cache como evidencia única ni como réplica garantizada.
+15. El sistema adopta patrones probados antes de inventar protocolos propios:
+    version vectors/bloques (Syncthing), three-way safe (Mutagen), preflight
+    (rclone bisync), placeholders (CFAPI), resumable offsets (tus).
 
 ## Consecuencias
 
