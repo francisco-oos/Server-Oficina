@@ -27,7 +27,7 @@ def test_storage_policy_has_no_hardcoded_large_file_threshold(db):
     assert decision.endpoint_code == "NAS-OFICINA"
 
 
-def test_resolver_prefers_verified_pinned_location(db):
+def test_resolver_prefers_lower_read_priority_before_remote_pin(db):
     prefix = uuid4().hex[:8]
     version = _version(db, prefix)
     hub = StorageEndpoint(code=f"HUB-{prefix}", display_name="Latitude", endpoint_type="HUB", read_priority=10)
@@ -41,8 +41,8 @@ def test_resolver_prefers_verified_pinned_location(db):
     db.commit()
     result = resolve_version_content(db, version_id=version.id)
     assert result.state == "AVAILABLE"
-    assert result.endpoint_code == nas.code
-    assert result.pinned is True
+    assert result.endpoint_code == hub.code
+    assert result.pinned is False
 
 
 def test_resolver_never_claims_unverified_content(db):
@@ -55,3 +55,20 @@ def test_resolver_never_claims_unverified_content(db):
     result = resolve_version_content(db, version_id=version.id)
     assert result.state == "UNAVAILABLE"
     assert result.endpoint_code is None
+
+
+def test_resolver_falls_back_to_available_nas_when_hub_is_unreachable(db):
+    prefix = uuid4().hex[:8]
+    version = _version(db, prefix)
+    hub = StorageEndpoint(code=f"HUB2-{prefix}", display_name="Latitude", endpoint_type="HUB", read_priority=10)
+    nas = StorageEndpoint(code=f"NAS2-{prefix}", display_name="NAS", endpoint_type="NAS", read_priority=20)
+    db.add_all([hub, nas]); db.flush()
+    now = datetime.now(timezone.utc)
+    db.add_all([
+        ContentLocation(version_id=version.id, endpoint_id=hub.id, relative_path="cache/a", role="CACHE", state="AVAILABLE", sha256=version.sha256, size_bytes=version.size_bytes, verified_at=now),
+        ContentLocation(version_id=version.id, endpoint_id=nas.id, relative_path="archive/a", role="PRIMARY", state="AVAILABLE", sha256=version.sha256, size_bytes=version.size_bytes, verified_at=now),
+    ])
+    db.commit()
+    result = resolve_version_content(db, version_id=version.id, available_endpoint_codes={nas.code})
+    assert result.state == "AVAILABLE"
+    assert result.endpoint_code == nas.code
