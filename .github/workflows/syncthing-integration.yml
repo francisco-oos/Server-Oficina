@@ -1,0 +1,51 @@
+name: Syncthing Integration
+
+on:
+  push:
+    branches:
+      - "agent/openai/sync-core-v0.2"
+  pull_request:
+    paths:
+      - "app/services/sync_*.py"
+      - "app/services/content_store.py"
+      - "app/services/file_watcher.py"
+      - "tests/integration/**"
+      - ".github/workflows/syncthing-integration.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-syncthing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      IT_ROOT: ${{ github.workspace }}/runtime/syncthing-it
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preparar laboratorio
+        run: |
+          rm -rf "$IT_ROOT"
+          mkdir -p "$IT_ROOT"/{hub,pc1,pc2,hub-home,pc1-home,pc2-home}
+          chmod -R 0777 "$IT_ROOT"
+
+      - name: Levantar tres nodos Syncthing 2.1.5
+        run: |
+          docker compose -f tests/integration/syncthing-compose.yml pull
+          docker compose -f tests/integration/syncthing-compose.yml up -d
+
+      - name: Ejecutar pruebas E2E de transporte
+        run: python tests/integration/syncthing_smoke.py
+
+      - name: Diagnóstico final
+        if: always()
+        run: |
+          docker compose -f tests/integration/syncthing-compose.yml ps || true
+          docker compose -f tests/integration/syncthing-compose.yml logs --no-color --tail=200 || true
+
+      - name: Desmontar laboratorio
+        if: always()
+        run: docker compose -f tests/integration/syncthing-compose.yml down -v --remove-orphans || true
