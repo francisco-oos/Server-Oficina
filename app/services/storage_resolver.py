@@ -151,10 +151,13 @@ def resolve_version_content(
         )
 
     role_rank = {"PRIMARY": 0, "CACHE": 1, "REPLICA": 2}
+    # La prioridad del endpoint expresa LOCAL -> HUB -> NAS. "pinned" decide
+    # entre ubicaciones de prioridad equivalente; no debe hacer que un NAS
+    # remoto desplace una copia local ya verificada.
     candidates.sort(
         key=lambda pair: (
-            0 if pair[0].pinned else 1,
             pair[1].read_priority,
+            0 if pair[0].pinned else 1,
             role_rank.get(pair[0].role, 50),
             pair[1].code,
         )
