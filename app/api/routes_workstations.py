@@ -14,6 +14,7 @@ from app.core.config import load_settings
 from app.db.base import get_db
 from app.db.local_cloud_models import SyncPeer, WorkstationSession
 from app.db.models import User
+from app.services.storage_planner import plan_content_placement
 from app.services.workstation_identity import (
     authenticate_peer,
     heartbeat,
@@ -35,6 +36,14 @@ class WorkstationLoginIn(BaseModel):
 class WorkstationHeartbeatIn(BaseModel):
     peer_code: str
     session_id: str | None = None
+
+
+class StoragePlanIn(BaseModel):
+    peer_code: str = Field(min_length=1, max_length=80)
+    filename: str = Field(min_length=1, max_length=255)
+    size_bytes: int = Field(ge=0)
+    area_code: str | None = Field(default=None, max_length=80)
+    document_family: str | None = Field(default=None, max_length=160)
 
 
 class FileEventIn(BaseModel):
@@ -151,6 +160,33 @@ def active_workstations(
         "online_window_minutes": max(1, load_settings().workstation_online_minutes),
         "note": "Login válido identifica operador; heartbeat reciente indica presencia digital. No sustituye RRHH.",
         "items": result,
+    }
+
+
+@router.post("/workstations/storage-plan")
+def workstation_storage_plan(
+    data: StoragePlanIn,
+    x_server_oficina_device_token: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    """Planifica HOT/NAS_DIRECT sin exponer rutas ni credenciales del NAS."""
+    peer = _peer_or_401(db, data.peer_code, x_server_oficina_device_token)
+    plan = plan_content_placement(
+        db,
+        filename=data.filename,
+        size_bytes=data.size_bytes,
+        area_code=data.area_code,
+        document_family=data.document_family,
+    )
+    return {
+        "peer_id": peer.id,
+        "action": plan.action,
+        "mode": plan.mode,
+        "repository_code": plan.repository_code,
+        "transport_owner": plan.transport_owner,
+        "pin_local": plan.pin_local,
+        "reason": plan.reason,
+        "security_note": "No se exponen mount_point, UNC ni credenciales en este endpoint.",
     }
 
 
