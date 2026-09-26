@@ -12,7 +12,8 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.local_cloud_models import ContentTransfer, DocumentVersion, StorageEndpoint
+from app.db.local_cloud_models import ContentTransfer, DocumentVersion, StorageRepositoryProfile
+from app.db.models import EvidenceRepository
 
 
 ACTIVE_STATES = {"PENDING", "TRANSFERRING", "PAUSED", "FAILED"}
@@ -23,10 +24,10 @@ def begin_transfer(
     *,
     transfer_key: str,
     version_id: str,
-    destination_endpoint_id: str,
+    destination_repository_id: str,
     temp_relative_path: str,
     final_relative_path: str,
-    source_endpoint_id: str | None = None,
+    source_repository_id: str | None = None,
     metadata: dict | None = None,
 ) -> tuple[ContentTransfer, bool]:
     """Crea o recupera una sesión usando una clave idempotente."""
@@ -35,20 +36,22 @@ def begin_transfer(
         raise ValueError("transfer_key requerido")
     existing = db.scalar(select(ContentTransfer).where(ContentTransfer.transfer_key == key))
     if existing:
-        if existing.version_id != version_id or existing.destination_endpoint_id != destination_endpoint_id:
+        if existing.version_id != version_id or existing.destination_repository_id != destination_repository_id:
             raise ValueError("transfer_key reutilizada para otro destino o versión")
         return existing, False
 
     version = db.get(DocumentVersion, version_id)
-    endpoint = db.get(StorageEndpoint, destination_endpoint_id)
-    if not version or not endpoint or not endpoint.active or not endpoint.writable:
-        raise ValueError("Versión o endpoint destino no disponible para escritura")
+    repository = db.get(EvidenceRepository, destination_repository_id)
+    profile = db.get(StorageRepositoryProfile, destination_repository_id)
+    writable = True if profile is None else profile.writable
+    if not version or not repository or not repository.active or not writable:
+        raise ValueError("Versión o repositorio destino no disponible para escritura")
 
     row = ContentTransfer(
         transfer_key=key,
         version_id=version.id,
-        source_endpoint_id=source_endpoint_id,
-        destination_endpoint_id=endpoint.id,
+        source_repository_id=source_repository_id,
+        destination_repository_id=repository.id,
         state="PENDING",
         expected_sha256=version.sha256.lower(),
         total_bytes=version.size_bytes,
