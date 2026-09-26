@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.local_cloud_models import DocumentRecord, DocumentVersion, SyncShare
-from app.services.sync_core import normalize_relative_path
+from app.services.sync_path_policy import portable_path_key, validate_portable_office_path
 
 
 def register_version(
@@ -25,10 +25,11 @@ def register_version(
     mtime_ns: int | None = None,
     change_kind: str = "MODIFIED",
     parent_version_id: str | None = None,
+    storage_relative_path: str | None = None,
     metadata: dict | None = None,
 ) -> tuple[DocumentRecord, DocumentVersion, bool]:
-    path = normalize_relative_path(relative_path)
-    normalized = path.casefold()
+    path = validate_portable_office_path(relative_path)
+    normalized = portable_path_key(path)
     document = db.scalar(select(DocumentRecord).where(
         DocumentRecord.share_id == share.id,
         DocumentRecord.normalized_path == normalized,
@@ -65,6 +66,7 @@ def register_version(
         change_kind=change_kind.upper(),
         source_peer_id=source_peer_id,
         source_user_id=source_user_id,
+        storage_relative_path=storage_relative_path,
         observed_at=datetime.now(timezone.utc),
         analysis_status="PENDING",
         metadata_json=metadata or {},
