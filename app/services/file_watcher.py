@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.db.local_cloud_models import DocumentRecord, DocumentVersion, SyncShare
 from app.services.document_registry import register_version
-from app.services.sync_core import normalize_relative_path
+from app.services.sync_path_policy import PathCollisionError, portable_path_key, validate_portable_office_path
 
 IGNORED_SUFFIXES = {".tmp", ".partial", ".part", ".swp"}
 
@@ -29,6 +29,8 @@ def _ignored(relative: Path) -> bool:
         return True
     if relative.name.startswith("~$"):
         return True
+    if relative.name.startswith(".syncthing.") or relative.name.startswith("~syncthing~"):
+        return True
     return relative.suffix.lower() in IGNORED_SUFFIXES
 
 
@@ -44,8 +46,11 @@ def snapshot(root: Path) -> dict[str, FileObservation]:
         if _ignored(relative):
             continue
         stat = path.stat()
-        rel = normalize_relative_path(relative.as_posix())
-        out[rel.casefold()] = FileObservation(rel, stat.st_size, stat.st_mtime_ns)
+        rel = validate_portable_office_path(relative.as_posix())
+        key = portable_path_key(rel)
+        if key in out and out[key].relative_path != rel:
+            raise PathCollisionError(f"Colisión Windows/Linux: {out[key].relative_path} <> {rel}")
+        out[key] = FileObservation(rel, stat.st_size, stat.st_mtime_ns)
     return out
 
 
@@ -81,7 +86,7 @@ def ingest_stable_snapshot(
     for observation in stable:
         document = db.scalar(select(DocumentRecord).where(
             DocumentRecord.share_id == share.id,
-            DocumentRecord.normalized_path == observation.relative_path.casefold(),
+            DocumentRecord.normalized_path == portable_path_key(observation.relative_path),
         ))
         latest = None
         if document:
