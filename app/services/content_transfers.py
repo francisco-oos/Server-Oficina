@@ -64,6 +64,11 @@ def begin_transfer(
 def start_or_resume(db: Session, transfer: ContentTransfer) -> ContentTransfer:
     if transfer.state == "COMPLETED":
         return transfer
+    if transfer.state == "VERIFYING":
+        # Tras un reinicio se reanuda la verificación, no se retransmiten bytes.
+        return transfer
+    if transfer.state not in ACTIVE_STATES:
+        raise ValueError("Estado de transferencia no reanudable")
     if transfer.confirmed_offset < 0 or transfer.confirmed_offset > transfer.total_bytes:
         raise ValueError("Offset persistido inválido")
     transfer.state = "TRANSFERRING"
