@@ -261,6 +261,29 @@ class StorageRepositoryProfile(Base):
     capabilities_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
 
+
+class StorageRepositoryHealth(Base):
+    """Estado operativo efímero de un EvidenceRepository.
+
+    Se separa de StorageRepositoryProfile para no mezclar configuración con
+    disponibilidad observada. Un repositorio puede seguir siendo válido aunque
+    esté temporalmente fuera de línea.
+    """
+
+    __tablename__ = "storage_repository_health"
+    repository_id: Mapped[str] = mapped_column(
+        ForeignKey("evidence_repositories.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    state: Mapped[str] = mapped_column(String(24), default="UNKNOWN", index=True)
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_failure_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    detail_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
 class ContentLocation(Base):
     """Ubicación verificable de los bytes de una DocumentVersion."""
 
