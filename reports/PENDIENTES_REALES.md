@@ -28,7 +28,7 @@ los gates automáticos pasen.
 
 | # | Qué | Por qué no entró |
 |---|---|---|
-| 7 | **Módulo de Ingesta Documental por Área** | Lo desarrollará otro programador. Esta entrega deja los **contratos** listos en `docs/34_CONTRATO_INGESTA_DOCUMENTAL.md` para que se integre con `ImportBatch`/`ImportIssue` y no nazca una versión incompatible. |
+| 7 | **Módulo de Ingesta Documental por Área** | Lo desarrollará otro programador. Esta entrega deja los **contratos** listos en `docs/arquitectura/34_CONTRATO_INGESTA_DOCUMENTAL.md` para que se integre con `ImportBatch`/`ImportIssue` y no nazca una versión incompatible. |
 | 8 | **Herramienta de migraciones** | Mientras se respete «sólo se agregan tablas» no hace falta. Será necesaria en cuanto haya que alterar una columna con datos en producción. |
 | 9 | **Exportaciones e informes imprimibles** | No estaban en el encargo. Se mencionan porque la oficina acabará pidiéndolos. |
 
@@ -62,3 +62,35 @@ impiden operar; los 7 a 9 son trabajo futuro planificado.
 - No afirma haber probado el NAS real, ni concurrencia física, ni un ciclo
   completo de respaldo y restauración sobre datos de producción.
 - No declara éxito por compilar ni por tener los gates en verde.
+
+
+## Fase 1 Nube Local / sincronización — pendientes actuales
+
+Los gates automáticos ya incluyen tres procesos Syncthing reales y simulación de
+24 clientes lógicos. **No equivalen a PCs físicas de oficina.**
+
+Pendiente antes de lectores/LLM:
+
+- Companion Windows: discovery de Server Oficina, login por estación, journal
+  offline, lease OPEN/CLOSE y cola idempotente.
+- Gate físico 1 PC Windows + Latitude usando carpeta LAB.
+- Gate físico posterior con 2 y 5 PCs.
+- Cambio real de Wi-Fi/DHCP sin reconfigurar identidades.
+- Operación con Internet desconectado.
+- Edición concurrente real de XLSX/DOCX y recuperación de conflicto.
+- Restore desde ContentStore histórico.
+- Adapter NAS/Synology con staging, carga reanudable, hash y promoción atómica.
+- Prueba de indisponibilidad NAS durante transferencia/hidratación.
+- Definir y probar presupuesto de caché/eviction con réplicas mínimas verificadas.
+- CFAPI/placeholder es diseño futuro; no está implementado.
+- Separación completa `Core + Domain Pack` todavía no está terminada: existen
+  módulos sísmicos explícitos en el repositorio.
+
+### Administración GitHub pendiente
+
+La integración GitHub usada por este trabajo no expone una mutación de
+administración para eliminar colaboradores del repositorio. Los PR abiertos no
+tienen revisores solicitados y no se encontró un ruleset que otorgue acceso,
+pero **la revocación de un colaborador debe ejecutarse con credenciales de
+administrador desde Settings → Collaborators**. Este pendiente no debe marcarse
+como resuelto por un agente sin evidencia de esa operación.
