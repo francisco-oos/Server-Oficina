@@ -52,7 +52,7 @@ def record_repository_probe(
         row.consecutive_failures = 0
         row.last_success_at = now
     else:
-        row.consecutive_failures += 1
+        row.consecutive_failures = (row.consecutive_failures or 0) + 1
         row.last_failure_at = now
         row.state = (
             "OFFLINE"
