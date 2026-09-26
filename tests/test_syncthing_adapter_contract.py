@@ -53,7 +53,7 @@ def test_upsert_folder_posts_json(monkeypatch):
 
     monkeypatch.setattr(mod, "urlopen", fake_urlopen)
     client = SyncthingClient("http://127.0.0.1:8384", "secret")
-    client.upsert_folder({"id": "rrhh", "path": "/srv/files/RRHH")
+    client.upsert_folder({"id": "rrhh", "path": "/srv/files/RRHH"})
     assert seen["method"] == "POST"
     assert seen["url"].endswith("/rest/config/folders")
     assert seen["body"]["id"] == "rrhh"
