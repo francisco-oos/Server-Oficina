@@ -41,6 +41,10 @@
     contenido: identidad/hash/tamaño por un lado, ubicación física por otro.
 18. CRDT queda reservado para datos nativos colaborativos futuros; no se usa
     como supuesto solucionador de XLSX/DOCX binarios.
+19. Un namespace físico tiene un solo propietario de transporte. No se combina
+    Syncthing con un router NAS dinámico actuando sobre el mismo path.
+20. La apariencia de espacio único se resuelve en el Content Resolver/Companion,
+    no superponiendo motores de sincronización.
 
 ## Consecuencias
 
