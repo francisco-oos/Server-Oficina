@@ -193,6 +193,22 @@ La sesión de estación dura hasta 15 días para atribución de operador. La
 presencia «online ahora» requiere heartbeat reciente y es una señal adicional a
 RRHH, nunca un reemplazo de su estado oficial.
 
+## No bloquear la interfaz por un NAS caído
+
+La existencia de una copia no significa que el repositorio sea alcanzable en
+este instante. Se separan dos conceptos:
+
+- `ContentLocation.state=AVAILABLE`: esa versión fue verificada allí;
+- `StorageRepositoryHealth`: ONLINE / DEGRADED / OFFLINE según probes recientes.
+
+Los fallos consecutivos abren un circuit breaker. Un estado ONLINE envejecido
+también deja de anunciarse como alcanzable. El Content Resolver sólo debe abrir
+automáticamente contra repositorios con salud reciente; si el NAS cae, la UI
+sigue respondiendo y muestra el contenido como temporalmente no accesible.
+
+Las operaciones reales de red se ejecutarán fuera del request HTTP interactivo
+para que un mount CIFS colgado no congele el dashboard.
+
 ## Riesgos que deben probarse físicamente
 
 - NAS cae durante una carga grande;
