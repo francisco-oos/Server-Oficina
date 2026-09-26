@@ -92,3 +92,18 @@ El detalle de sincronización está en
 
 La separación Core/Domain Pack se gobierna en
 `docs/vision/49_NUCLEO_REUTILIZABLE_Y_DOMAIN_PACKS.md`.
+
+### Snapshots externos revisados en esta fase
+
+| Repositorio | Commit revisado |
+|---|---|
+| `syncthing/syncthing` | `94c3c1cdef718d568686620cbff268eeaaf2c87d` |
+| `mutagen-io/mutagen` | `6ccfeaaf4dfd261e59ef9aac56e3c157b62e605b` |
+| `rclone/rclone` | `9dc8b71ae99496460f07373674609571918bfb9c` |
+| `ajeetdsouza/zoxide` | `09a18b4424b3f1033094ffd97da6d47585e38259` |
+| `NousResearch/hermes-agent` | `f077152871798b8a666daf48333d123549d10672` |
+| `tus/tusd` | `c9d174d0e20c69f24e9785d2f639df4da1c4fdc5` |
+| `git-lfs/git-lfs` | `0043a645047926f4bd7f7091299095528253d575` |
+| `automerge/automerge` | `ddbff535407e4d28cd2a82eaf6c6add08caa3bdd` |
+
+Los commits sólo fijan el punto estudiado; no implican dependencia ni copia de código.
