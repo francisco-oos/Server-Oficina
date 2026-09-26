@@ -3,8 +3,8 @@ from __future__ import annotations
 """Resolución lógica de contenido y políticas de almacenamiento.
 
 La interfaz y los futuros lectores no deben depender de si los bytes viven en
-la PC, la Latitude o un NAS. Este módulo selecciona ubicaciones ya verificadas y
-evalúa políticas explícitas. No mueve archivos por sí mismo.
+la PC, la Latitude o un NAS. EvidenceRepository conserva la identidad única del
+almacenamiento; esta capa sólo evalúa política y disponibilidad verificada.
 """
 
 from dataclasses import dataclass
@@ -14,7 +14,12 @@ from typing import Iterable
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.local_cloud_models import ContentLocation, DocumentVersion, StoragePolicy, StorageRepositoryProfile
+from app.db.local_cloud_models import (
+    ContentLocation,
+    DocumentVersion,
+    StoragePolicy,
+    StorageRepositoryProfile,
+)
 from app.db.models import EvidenceRepository
 
 
@@ -38,7 +43,14 @@ class StorageDecision:
     reason: str
 
 
-def _matches(selector: dict, *, size_bytes: int, extension: str, area_code: str | None, document_family: str | None) -> bool:
+def _matches(
+    selector: dict,
+    *,
+    size_bytes: int,
+    extension: str,
+    area_code: str | None,
+    document_family: str | None,
+) -> bool:
     """Evalúa sólo selectores declarativos simples y auditables."""
     if "min_size_bytes" in selector and size_bytes < int(selector["min_size_bytes"]):
         return False
@@ -70,18 +82,17 @@ def choose_storage_policy(
 ) -> StorageDecision:
     """Selecciona la primera política coincidente por prioridad.
 
-    Si no existe política, el comportamiento seguro es HOT_REPLICATED. Así un
-    archivo no desaparece de la capa local sólo por superar un número hardcodeado.
+    Sin política explícita se conserva el comportamiento seguro HOT_REPLICATED.
+    No existe un umbral de tamaño mágico incrustado en el código.
     """
     extension = PurePosixPath(filename).suffix.lower()
     ordered = sorted(
-        (p for p in policies if p.active),
-        key=lambda p: (p.priority, p.code),
+        (policy for policy in policies if policy.active),
+        key=lambda policy: (policy.priority, policy.code),
     )
     for policy in ordered:
-        selector = policy.selector_json or {}
         if not _matches(
-            selector,
+            policy.selector_json or {},
             size_bytes=size_bytes,
             extension=extension,
             area_code=area_code,
@@ -89,14 +100,14 @@ def choose_storage_policy(
         ):
             continue
         action = policy.action_json or {}
-        mode = str(action.get("mode", "HOT_REPLICATED")).upper()
         return StorageDecision(
             policy_code=policy.code,
-            mode=mode,
+            mode=str(action.get("mode", "HOT_REPLICATED")).upper(),
             repository_code=action.get("repository_code"),
             pin_local=bool(action.get("pin_local", False)),
             reason=f"matched:{policy.code}",
         )
+
     return StorageDecision(
         policy_code=None,
         mode="HOT_REPLICATED",
@@ -112,15 +123,21 @@ def resolve_version_content(
     version_id: str,
     available_repository_codes: set[str] | None = None,
 ) -> ContentResolution:
-    """Devuelve la mejor ubicación verificable sin inventar disponibilidad."""
+    """Devuelve la mejor ubicación verificada sin inventar disponibilidad."""
     version = db.get(DocumentVersion, version_id)
     if not version:
         raise ValueError("Versión documental no encontrada")
 
     rows = db.execute(
         select(ContentLocation, EvidenceRepository, StorageRepositoryProfile)
-        .join(EvidenceRepository, EvidenceRepository.id == ContentLocation.repository_id)
-        .outerjoin(StorageRepositoryProfile, StorageRepositoryProfile.repository_id == EvidenceRepository.id)
+        .join(
+            EvidenceRepository,
+            EvidenceRepository.id == ContentLocation.repository_id,
+        )
+        .outerjoin(
+            StorageRepositoryProfile,
+            StorageRepositoryProfile.repository_id == EvidenceRepository.id,
+        )
         .where(
             ContentLocation.version_id == version.id,
             ContentLocation.state == "AVAILABLE",
@@ -128,11 +145,15 @@ def resolve_version_content(
         )
     ).all()
 
-    candidates: list[tuple[ContentLocation, StorageEndpoint]] = []
-    for location, endpoint in rows:
-        if available_repository_codes is not None and endpoint.code not in available_repository_codes:
+    candidates: list[
+        tuple[ContentLocation, EvidenceRepository, StorageRepositoryProfile | None]
+    ] = []
+    for location, repository, profile in rows:
+        if (
+            available_repository_codes is not None
+            and repository.code not in available_repository_codes
+        ):
             continue
-        # Una ubicación sólo es elegible si representa exactamente la versión.
         if location.sha256.lower() != version.sha256.lower():
             continue
         if int(location.size_bytes) != int(version.size_bytes):
@@ -153,9 +174,9 @@ def resolve_version_content(
         )
 
     role_rank = {"PRIMARY": 0, "CACHE": 1, "REPLICA": 2}
-    # La prioridad del endpoint expresa LOCAL -> HUB -> NAS. "pinned" decide
-    # entre ubicaciones de prioridad equivalente; no debe hacer que un NAS
-    # remoto desplace una copia local ya verificada.
+    # Menor read_priority = origen preferido. Un pin sólo desempata dentro de
+    # prioridades equivalentes; nunca obliga a preferir un NAS sobre una copia
+    # local ya verificada.
     candidates.sort(
         key=lambda pair: (
             pair[2].read_priority if pair[2] is not None else 100,
@@ -164,11 +185,12 @@ def resolve_version_content(
             pair[1].code,
         )
     )
-    location, repository, profile = candidates[0]
+
+    location, repository, _profile = candidates[0]
     return ContentResolution(
         version_id=version.id,
-        repository_code=endpoint.code,
-        repository_type=endpoint.repository_type,
+        repository_code=repository.code,
+        repository_type=repository.repository_type,
         relative_path=location.relative_path,
         state="AVAILABLE",
         pinned=location.pinned,
