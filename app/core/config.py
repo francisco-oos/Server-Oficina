@@ -18,6 +18,7 @@ class Settings:
     versions_root: Path
     syncthing_api: str
     syncthing_api_key: str
+    workstation_session_days: int
 
 
 def load_settings() -> Settings:
@@ -46,4 +47,5 @@ def load_settings() -> Settings:
         versions_root=versions_root,
         syncthing_api=os.getenv("SERVER_OFICINA_SYNCTHING_API", "http://127.0.0.1:8384"),
         syncthing_api_key=os.getenv("SERVER_OFICINA_SYNCTHING_API_KEY", ""),
+        workstation_session_days=int(os.getenv("SERVER_OFICINA_WORKSTATION_SESSION_DAYS", "15")),
     )
