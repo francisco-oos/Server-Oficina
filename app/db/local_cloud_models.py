@@ -296,3 +296,27 @@ class StoragePolicy(Base):
     selector_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     action_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+
+class ContentTransfer(Base):
+    """Sesión reanudable para mover una versión entre endpoints físicos."""
+
+    __tablename__ = "content_transfers"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    transfer_key: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    version_id: Mapped[str] = mapped_column(ForeignKey("document_versions.id", ondelete="CASCADE"), index=True)
+    source_endpoint_id: Mapped[str | None] = mapped_column(ForeignKey("storage_endpoints.id"), nullable=True, index=True)
+    destination_endpoint_id: Mapped[str] = mapped_column(ForeignKey("storage_endpoints.id"), index=True)
+    state: Mapped[str] = mapped_column(String(30), default="PENDING", index=True)
+    expected_sha256: Mapped[str] = mapped_column(String(64), index=True)
+    total_bytes: Mapped[int] = mapped_column(Integer)
+    confirmed_offset: Mapped[int] = mapped_column(Integer, default=0)
+    temp_relative_path: Mapped[str] = mapped_column(Text)
+    final_relative_path: Mapped[str] = mapped_column(Text)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
