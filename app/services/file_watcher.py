@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.db.local_cloud_models import DocumentRecord, DocumentVersion, SyncShare
 from app.services.content_store import ContentStore
 from app.services.document_registry import register_version
+from app.services.sync_conflicts import parse_syncthing_conflict_path
 from app.services.sync_path_policy import PathCollisionError, portable_path_key, validate_portable_office_path
 
 IGNORED_SUFFIXES = {".tmp", ".partial", ".part", ".swp"}
@@ -107,7 +108,18 @@ def ingest_stable_snapshot(
         if content_store is not None:
             stored = content_store.archive_file(path, expected_sha256=digest)
             stored_path = stored.relative_path
-        _, _, created = register_version(
+        conflict = parse_syncthing_conflict_path(observation.relative_path)
+        metadata = {
+            "scanner": "stable-two-pass",
+            "content_archived": bool(stored_path),
+            "syncthing_conflict": bool(conflict),
+        }
+        if conflict:
+            metadata["conflict_of"] = conflict.original_path
+            metadata["conflict_modified_by"] = conflict.modified_by
+            metadata["conflict_observed_name"] = conflict.conflict_path
+
+        document, version, created = register_version(
             db,
             share=share,
             relative_path=observation.relative_path,
@@ -115,10 +127,18 @@ def ingest_stable_snapshot(
             size_bytes=observation.size_bytes,
             mtime_ns=observation.mtime_ns,
             source_peer_id=source_peer_id,
-            change_kind="MODIFIED",
+            change_kind="CONFLICT" if conflict else "MODIFIED",
             storage_relative_path=stored_path,
-            metadata={"scanner": "stable-two-pass", "content_archived": bool(stored_path)},
+            metadata=metadata,
         )
+        if conflict:
+            document.metadata_json = {
+                **(document.metadata_json or {}),
+                "syncthing_conflict": True,
+                "conflict_of": conflict.original_path,
+            }
+            version.analysis_status = "CONFLICT_REVIEW"
+            db.commit()
         count += int(created)
     return count
 
