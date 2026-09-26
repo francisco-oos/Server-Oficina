@@ -4,6 +4,15 @@ on:
   push:
     branches:
       - "agent/openai/sync-core-v0.2"
+    paths:
+      - "app/services/sync_*.py"
+      - "app/services/content_store.py"
+      - "app/services/content_transfers.py"
+      - "app/services/replica_guard.py"
+      - "app/services/file_watcher.py"
+      - "app/db/local_cloud_models.py"
+      - "tests/integration/**"
+      - ".github/workflows/syncthing-integration.yml"
   pull_request:
     paths:
       - "app/services/sync_*.py"
