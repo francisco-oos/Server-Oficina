@@ -17,7 +17,11 @@ on:
     paths:
       - "app/services/sync_*.py"
       - "app/services/content_store.py"
+      - "app/services/content_transfers.py"
+      - "app/services/replica_guard.py"
+      - "app/services/storage_resolver.py"
       - "app/services/file_watcher.py"
+      - "app/db/local_cloud_models.py"
       - "tests/integration/**"
       - ".github/workflows/syncthing-integration.yml"
   workflow_dispatch:
@@ -33,7 +37,7 @@ jobs:
       IT_ROOT: ${{ github.workspace }}/runtime/syncthing-it
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Preparar laboratorio
         run: |
