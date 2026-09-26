@@ -82,6 +82,9 @@ La release sólo conserva metadatos y conclusiones de diseño de documentos prop
 | https://github.com/ajeetdsouza/zoxide | frecency y ranking de rutas usadas | inspiración para Smart Navigator; no sirve como buscador de contenido documental |
 | https://github.com/NousResearch/hermes-agent | runtime de agente, herramientas, skills, memoria/learning loop y backends aislables | estudiar separación Agent Runtime/Tool Registry/Skills; **no** convertir su memoria del agente en verdad de oficina |
 | https://github.com/tus/tusd | pausa/reanudación sin retransmitir lo ya confirmado | semántica adoptada en `ContentTransfer`; backend físico aún por implementar |
+| https://git-annex.branchable.com/ | contenido por hash, ubicación distribuida, preferred/required content, numcopies/mincopies y drop seguro | adoptar guardas de réplica y política de ubicación; no exponer Git al usuario |
+| https://github.com/git-lfs/git-lfs | puntero pequeño OID+size, objetos grandes externos, Batch API y locks | patrón para identidad lógica separada de ubicación; no dependencia Git |
+| https://github.com/automerge/automerge | CRDT local-first y merge de estado estructurado | candidato futuro sólo para datos nativos colaborativos; no para fusionar Office binario |
 
 El detalle de sincronización está en
 `docs/investigacion/46_INVESTIGACION_SINCRONIZACION_ROBUSTA.md` y
