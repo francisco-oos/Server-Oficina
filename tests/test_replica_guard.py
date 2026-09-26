@@ -42,3 +42,22 @@ def test_eviction_refuses_when_copy_count_would_fall_below_policy(db):
     assert decision.allowed is False
     assert decision.verified_copies_after == 1
     assert decision.reason == "insufficient-verified-copies"
+
+
+def test_two_paths_on_same_endpoint_are_not_two_replicas(db):
+    prefix = uuid4().hex[:8]
+    version, _, nas, local, remote = _setup(db, prefix)
+    duplicate = ContentLocation(
+        version_id=version.id,
+        endpoint_id=nas.id,
+        relative_path="archive/duplicate-a",
+        role="REPLICA",
+        state="AVAILABLE",
+        sha256=version.sha256,
+        size_bytes=version.size_bytes,
+        verified_at=datetime.now(timezone.utc),
+    )
+    db.add(duplicate); db.commit()
+    decision = can_evict_location(db, location_id=local.id, min_verified_copies=2)
+    assert decision.allowed is False
+    assert decision.verified_copies_after == 1
