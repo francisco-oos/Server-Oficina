@@ -234,3 +234,65 @@ class SyncFileEvent(Base):
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, index=True)
     attribution: Mapped[str] = mapped_column(String(30), default="DEVICE_ONLY", index=True)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+
+class StorageEndpoint(Base):
+    """Ubicación física intercambiable capaz de almacenar contenido documental.
+
+    El endpoint NO es la identidad del documento. Puede ser el SSD del hub, un
+    NAS/Synology u otro backend futuro. Las decisiones de tamaño/caché viven en
+    StoragePolicy y no se hardcodean en el servicio.
+    """
+
+    __tablename__ = "storage_endpoints"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    code: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    display_name: Mapped[str] = mapped_column(String(180))
+    endpoint_type: Mapped[str] = mapped_column(String(40), index=True)
+    root_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    writable: Mapped[bool] = mapped_column(Boolean, default=True)
+    supports_direct_upload: Mapped[bool] = mapped_column(Boolean, default=False)
+    supports_range_read: Mapped[bool] = mapped_column(Boolean, default=False)
+    read_priority: Mapped[int] = mapped_column(Integer, default=100)
+    write_priority: Mapped[int] = mapped_column(Integer, default=100)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+class ContentLocation(Base):
+    """Ubicación verificable de los bytes de una DocumentVersion."""
+
+    __tablename__ = "content_locations"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    version_id: Mapped[str] = mapped_column(ForeignKey("document_versions.id", ondelete="CASCADE"), index=True)
+    endpoint_id: Mapped[str] = mapped_column(ForeignKey("storage_endpoints.id", ondelete="CASCADE"), index=True)
+    relative_path: Mapped[str] = mapped_column(Text)
+    role: Mapped[str] = mapped_column(String(30), default="REPLICA", index=True)
+    state: Mapped[str] = mapped_column(String(30), default="PENDING", index=True)
+    sha256: Mapped[str] = mapped_column(String(64), index=True)
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_accessed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    __table_args__ = (
+        UniqueConstraint(
+            "version_id", "endpoint_id", "relative_path",
+            name="uq_content_location_version_endpoint_path",
+        ),
+    )
+
+
+class StoragePolicy(Base):
+    """Regla configurable de ubicación/caché; evita umbrales mágicos en código."""
+
+    __tablename__ = "storage_policies"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    code: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(180))
+    priority: Mapped[int] = mapped_column(Integer, default=100, index=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    selector_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    action_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
