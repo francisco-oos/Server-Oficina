@@ -15,10 +15,10 @@ from sqlalchemy.orm import Session
 
 from app.db.local_cloud_models import (
     StoragePolicy,
-    StorageRepositoryHealth,
     StorageRepositoryProfile,
 )
 from app.db.models import EvidenceRepository
+from app.services.repository_health import reachable_repository_codes
 from app.services.storage_resolver import choose_storage_policy
 
 
@@ -39,6 +39,7 @@ def plan_content_placement(
     size_bytes: int,
     area_code: str | None = None,
     document_family: str | None = None,
+    health_stale_after_seconds: int = 60,
 ) -> PlacementPlan:
     """Decide el transporte sin inventar disponibilidad ni rutas.
 
@@ -118,14 +119,17 @@ def plan_content_placement(
             pin_local=True,
         )
 
-    health = db.get(StorageRepositoryHealth, repository.id)
-    if health is None or health.state != "ONLINE":
+    reachable = reachable_repository_codes(
+        db,
+        stale_after_seconds=health_stale_after_seconds,
+    )
+    if repository.code not in reachable:
         return PlacementPlan(
             mode="NAS_DIRECT",
             repository_code=repository.code,
             transport_owner=profile.transport_owner,
             action="KEEP_LOCAL_PENDING_NAS",
-            reason="repository-not-online",
+            reason="repository-not-recently-online",
             pin_local=True,
         )
 
