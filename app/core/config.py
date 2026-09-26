@@ -19,6 +19,7 @@ class Settings:
     syncthing_api: str
     syncthing_api_key: str
     workstation_session_days: int
+    workstation_online_minutes: int
 
 
 def load_settings() -> Settings:
@@ -48,4 +49,5 @@ def load_settings() -> Settings:
         syncthing_api=os.getenv("SERVER_OFICINA_SYNCTHING_API", "http://127.0.0.1:8384"),
         syncthing_api_key=os.getenv("SERVER_OFICINA_SYNCTHING_API_KEY", ""),
         workstation_session_days=int(os.getenv("SERVER_OFICINA_WORKSTATION_SESSION_DAYS", "15")),
+        workstation_online_minutes=int(os.getenv("SERVER_OFICINA_WORKSTATION_ONLINE_MINUTES", "5")),
     )
