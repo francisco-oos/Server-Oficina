@@ -57,12 +57,12 @@ def build_folder_config(plan: SyncFolderPlan, *, versioning: bool = True) -> dic
         "path": str(root),
         "type": "sendreceive",
         "devices": devices,
-        "rescanIntervalS": 300,
+        "rescanIntervalS": 3600,
         "fsWatcherEnabled": True,
-        "fsWatcherDelayS": 5,
+        "fsWatcherDelayS": 10,
         "autoNormalize": True,
         "ignorePerms": False,
-        "maxConflicts": 25,
+        "maxConflicts": -1,
         "paused": False,
     }
     if versioning:
