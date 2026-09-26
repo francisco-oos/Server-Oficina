@@ -8,6 +8,7 @@ responsabilidad para que la raíz de `docs/` permanezca pequeña y navegable.
 - `vision/01_PROBLEMA_Y_FINALIDAD.md` — problema que resuelve Server Oficina.
 - `vision/38_MISION_VISION_NUBE_LOCAL_IA.md` — misión, visión y principios no negociables.
 - `vision/10_ROADMAP.md` — fases y criterios de cierre.
+- `vision/49_NUCLEO_REUTILIZABLE_Y_DOMAIN_PACKS.md` — separación Core reutilizable / perfil de oficina.
 
 ## Arquitectura
 
