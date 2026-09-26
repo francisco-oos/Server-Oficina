@@ -60,7 +60,7 @@ def can_evict_location(
 
     # Varias rutas del mismo endpoint NO son réplicas independientes. Para
     # seguridad contamos como máximo una copia verificada por repositorio físico.
-    safe_by_repository: dict[str, tuple[ContentLocation, StorageEndpoint]] = {}
+    safe_by_repository: dict[str, tuple[ContentLocation, EvidenceRepository]] = {}
     for location, repository in rows:
         if location.verified_at is None:
             continue
@@ -77,7 +77,7 @@ def can_evict_location(
     allowed = enough and not missing
 
     if missing:
-        reason = "missing-required-endpoints"
+        reason = "missing-required-repositories"
     elif not enough:
         reason = "insufficient-verified-copies"
     else:
