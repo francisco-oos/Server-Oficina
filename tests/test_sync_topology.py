@@ -26,7 +26,9 @@ def test_folder_plan_is_send_receive_and_keeps_conflicts():
     )
     assert payload["type"] == "sendreceive"
     assert payload["fsWatcherEnabled"] is True
-    assert payload["maxConflicts"] == 25
+    assert payload["fsWatcherDelayS"] == 10
+    assert payload["rescanIntervalS"] == 3600
+    assert payload["maxConflicts"] == -1
     assert payload["versioning"]["type"] == "staggered"
     assert payload["devices"] == [{"deviceID": "PC-A"}, {"deviceID": "PC-B"}]
 
