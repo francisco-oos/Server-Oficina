@@ -43,7 +43,7 @@ def _policy(db, prefix: str, repository_code: str):
         code=f"LARGE-{prefix}",
         name="Archivos grandes directos a NAS",
         priority=10,
-        selector_json={"min_size_bytes": 1_000_000, "extensions": [".bin"]},
+        selector_json={"min_size_bytes": 1_000_000, "extensions": [".bin"], "document_families": [f"FAMILY-{prefix}"]},
         action_json={"mode": "NAS_DIRECT", "repository_code": repository_code},
     )
     db.add(policy)
@@ -73,6 +73,7 @@ def test_online_capable_nas_gets_direct_plan(db):
         filename="video.bin",
         size_bytes=2_000_000,
         area_code="HSE",
+        document_family=f"FAMILY-{prefix}",
     )
     assert plan.action == "NAS_DIRECT"
     assert plan.repository_code == nas.code
@@ -88,6 +89,7 @@ def test_offline_nas_keeps_source_local_instead_of_falling_back_silently(db):
         db,
         filename="video.bin",
         size_bytes=2_000_000,
+        document_family=f"FAMILY-{prefix}",
     )
     assert plan.action == "KEEP_LOCAL_PENDING_NAS"
     assert plan.repository_code == nas.code
@@ -104,6 +106,7 @@ def test_repository_without_direct_upload_never_gets_direct_plan(db):
         db,
         filename="video.bin",
         size_bytes=2_000_000,
+        document_family=f"FAMILY-{prefix}",
     )
     assert plan.action == "KEEP_LOCAL_PENDING_NAS"
     assert plan.reason == "repository-does-not-support-direct-upload"
