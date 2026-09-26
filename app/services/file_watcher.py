@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.local_cloud_models import DocumentRecord, DocumentVersion, SyncShare
+from app.services.content_store import ContentStore
 from app.services.document_registry import register_version
 from app.services.sync_path_policy import PathCollisionError, portable_path_key, validate_portable_office_path
 
@@ -81,6 +82,7 @@ def ingest_stable_snapshot(
     root: Path,
     stable: Iterable[FileObservation],
     source_peer_id: str | None = None,
+    content_store: ContentStore | None = None,
 ) -> int:
     count = 0
     for observation in stable:
@@ -101,6 +103,10 @@ def ingest_stable_snapshot(
         except ValueError as exc:
             raise ValueError("Archivo fuera de la raíz aprobada") from exc
         digest = sha256_file(path)
+        stored_path = None
+        if content_store is not None:
+            stored = content_store.archive_file(path, expected_sha256=digest)
+            stored_path = stored.relative_path
         _, _, created = register_version(
             db,
             share=share,
@@ -110,7 +116,8 @@ def ingest_stable_snapshot(
             mtime_ns=observation.mtime_ns,
             source_peer_id=source_peer_id,
             change_kind="MODIFIED",
-            metadata={"scanner": "stable-two-pass"},
+            storage_relative_path=stored_path,
+            metadata={"scanner": "stable-two-pass", "content_archived": bool(stored_path)},
         )
         count += int(created)
     return count
