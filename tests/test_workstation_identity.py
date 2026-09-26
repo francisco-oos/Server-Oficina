@@ -12,6 +12,7 @@ from app.db.local_cloud_models import (
     WorkstationSession,
 )
 from app.db.models import User
+from tests.helpers import setup_admin
 from app.services.workstation_identity import (
     authenticate_peer,
     issue_peer_credential,
@@ -134,3 +135,24 @@ def test_offline_file_events_keep_logs_and_only_attribute_valid_session(client, 
     assert created_again is False
     assert same.id == e1.id
     assert db.scalar(select(SyncFileEvent).where(SyncFileEvent.client_event_id == f"{prefix}-1")).id == e1.id
+
+
+def test_valid_15_day_login_is_not_equal_to_online_presence(client, db):
+    prefix = uuid4().hex[:8]
+    peer, _ = _peer_share(db, prefix)
+    operator = _operator(db, prefix)
+    session = login_workstation(
+        db, peer=peer, username=operator.username, password="Password123!"
+    )
+    # La sesión sigue autenticada, pero un heartbeat viejo no significa
+    # "persona actualmente en la oficina".
+    session.last_seen_at = datetime.now(timezone.utc) - timedelta(minutes=30)
+    db.commit()
+
+    setup_admin(client)
+    response = client.get("/api/local-cloud/workstations/active")
+    assert response.status_code == 200, response.text
+    item = next(x for x in response.json()["items"] if x["session_id"] == session.id)
+    assert item["session_valid"] is True
+    assert item["online"] is False
+    assert item["presence_state"] == "SESSION_VALID_OFFLINE"
