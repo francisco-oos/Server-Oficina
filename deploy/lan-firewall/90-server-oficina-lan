@@ -1,0 +1,7 @@
+#!/bin/sh
+# NetworkManager dispatcher: al cambiar de red/DHCP, recalcular reglas LAN.
+case "$2" in
+  up|dhcp4-change|connectivity-change)
+    systemctl start --no-block server-oficina-lan-firewall.service ;;
+esac
+exit 0

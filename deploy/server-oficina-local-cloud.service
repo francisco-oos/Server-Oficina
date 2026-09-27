@@ -27,4 +27,6 @@ ProtectSystem=strict
 ReadWritePaths=/srv/server-oficina/versions
 
 [Install]
-WantedBy=multi-user.target
+# Arranca también cuando se inicia server-oficina a mano (INICIAR_SERVER_OFICINA.sh):
+# Requires= propaga el stop, pero no el start.
+WantedBy=multi-user.target server-oficina.service

@@ -52,17 +52,10 @@ chmod 700 "$SYNC_HOME"
 runuser -u "$SYNC_USER" -- test -w "$FILES/LAB_SYNC" || { echo "$SYNC_USER no puede escribir en LAB_SYNC" >&2; exit 4; }
 systemctl enable --now "syncthing@$SYNC_USER"
 
-# Puertos Syncthing sólo desde la subred LAN actual (mismo criterio que 8080 en
-# configurar-acceso-lan.sh; ver pendiente de cambio de subred en el runbook).
+# Puertos Syncthing (22000/tcp+udp, 21027/udp) sólo en la LAN confiable; el
+# reconciliador los recalcula al cambiar de router/DHCP (scripts/lan_firewall.py).
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q '^Status: active'; then
-  IFACE=$(ip -4 route show default | awk 'NR==1{print $5}')
-  SUBNET=$(ip -4 route show dev "$IFACE" scope link | awk '$1 ~ /^[0-9].*\// {print $1; exit}')
-  if [[ -n "$IFACE" && -n "$SUBNET" ]]; then
-    ufw allow in on "$IFACE" from "$SUBNET" to any port 22000 proto tcp comment 'Syncthing LAN'
-    ufw allow in on "$IFACE" from "$SUBNET" to any port 22000 proto udp comment 'Syncthing LAN QUIC'
-    ufw allow in on "$IFACE" from "$SUBNET" to any port 21027 proto udp comment 'Syncthing descubrimiento local'
-    echo "UFW: Syncthing permitido desde $SUBNET por $IFACE"
-  fi
+  python3 "$(cd "$(dirname "$0")" && pwd)/lan_firewall.py" enable syncthing
 fi
 
 echo "LAB_PREPARED_OK: $FILES/LAB_SYNC"

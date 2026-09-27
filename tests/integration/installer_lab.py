@@ -59,6 +59,7 @@ case "$*" in
   "inspect server-oficina-postgres") exit 0 ;;
   *pg_dump*) printf 'PGDMP-installer-lab %s\n' "$(date +%s%N)" ;;
   *pg_isready*) exit 0 ;;
+  *pg_restore*) cat > /dev/null; echo restored >> "$LAB_STATE/pg_restore.log"; exit 0 ;;
   logs*) exit 0 ;;
   *) echo "docker stub: $*" >&2; exit 0 ;;
 esac
@@ -147,8 +148,12 @@ def prepare():
 
 
 def run_installer(src: Path, name: str, **env_extra) -> subprocess.CompletedProcess:
+    return run_in_ns(f'exec "{src}/scripts/install-tablet.sh"', name, **env_extra)
+
+
+def run_in_ns(command: str, name: str, *, pre: str = "", **env_extra) -> subprocess.CompletedProcess:
     mounts = "\n".join(f'mkdir -p "{ns}" && mount --bind "{real}" "{ns}"' for ns, real in NS.items())
-    script = f"set -e\n{mounts}\nexec \"{src}/scripts/install-tablet.sh\"\n"
+    script = f"set -e\n{mounts}\n{pre}\n{command}\n"
     env = {k: v for k, v in os.environ.items() if k not in {"SUDO_USER", "SUDO_UID", "SUDO_GID"}}
     env.update({"PATH": f"{BIN}:{os.environ['PATH']}", "LAB_STATE": str(STATE), **env_extra})
     result = subprocess.run(
@@ -187,6 +192,65 @@ def reset_state():
     for path in [STATE, *NS.values()]:
         shutil.rmtree(path)
         path.mkdir(parents=True)
+
+
+def backup_and_restore(release: str):
+    """Backup diario: inventario de versions/, identidad Syncthing, réplica externa fail-closed."""
+    link = NS["/opt/server-oficina"] / "current"
+    link.unlink()
+    link.symlink_to(release)
+    srv = NS["/srv/server-oficina"]
+    for payload in (b"objeto-uno", b"objeto-dos"):
+        digest = hashlib.sha256(payload).hexdigest()
+        target = srv / "versions" / "sha256" / digest[:2] / digest
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(payload)
+    identity = srv / "syncthing" / ".local" / "state" / "syncthing"
+    identity.mkdir(parents=True)
+    for name in ("cert.pem", "key.pem", "config.xml"):
+        (identity / name).write_text(f"lab {name}\n")
+    backup = "exec /opt/server-oficina/current/scripts/backup.sh"
+    base = srv / "backups" / "server-oficina"
+
+    r = run_in_ns(backup, "s7_backup_sin_replica")
+    daily = sorted(p for p in base.iterdir() if p.name[0].isdigit())[-1]
+    info = (daily / "BACKUP_INFO").read_text()
+    sums = subprocess.run(["sha256sum", "-c", "SHA256SUMS"], cwd=daily, capture_output=True, text=True)
+    key_mode = stat.S_IMODE((daily / "syncthing-hub-identity.tar.gz").stat().st_mode)
+    check("s7", r.returncode == 0 and "versions_replica_externa=NO_CONFIGURADA" in info
+          and "versions_objetos=2" in info and sums.returncode == 0 and key_mode == 0o600,
+          r.stderr[-800:] + info + sums.stdout)
+    check("s7 aviso", "sin réplica externa" in r.stderr)
+    record("backup_diario_sin_replica_externa", r, backup=daily.name, sha_ok=True,
+           identidad_syncthing_modo=f"{key_mode:04o}", inventario_objetos=2)
+
+    (NS["/etc/server-oficina"] / "backup.env").write_text("BACKUP_VERSIONS_DEST=/mnt/so-respaldo/versions\n")
+    r = run_in_ns(backup, "s8_replica_no_montada", pre="mkdir -p /mnt/so-respaldo")
+    check("s8 fail-closed", r.returncode == 3 and "no está montado" in r.stderr, r.stderr[-500:])
+    record("replica_externa_no_montada_fail_closed", r)
+
+    replica = LAB / "replica"
+    replica.mkdir()
+    r = run_in_ns(backup, "s9_replica_ok",
+                  pre=f'mkdir -p /mnt/so-respaldo && mount -t tmpfs tmpfs /mnt/so-respaldo && '
+                      f'trap "cp -a /mnt/so-respaldo/. {replica}/" EXIT')
+    check("s9", r.returncode == 0, r.stderr[-800:])
+    daily = sorted(p for p in base.iterdir() if p.name[0].isdigit())[-1]
+    info = (daily / "BACKUP_INFO").read_text()
+    check("s9 replica", "versions_replica_externa=OK:2_nuevos" in info, info)
+    record("replica_externa_versions_verificada", r, info=info.strip().splitlines())
+
+    (STATE / "server-oficina-local-cloud.active").write_text("active\n")
+    r = run_in_ns(f'exec /opt/server-oficina/current/scripts/restore.sh "/srv/server-oficina/backups/server-oficina/{daily.name}"',
+                  "s10_restore")
+    log = (STATE / "systemctl.log").read_text().splitlines()
+    stop_observer = max(i for i, l in enumerate(log) if l == "systemctl stop server-oficina-local-cloud")
+    start_observer = max(i for i, l in enumerate(log) if l == "systemctl start server-oficina-local-cloud")
+    check("s10", r.returncode == 0 and (STATE / "pg_restore.log").exists(), r.stderr[-800:])
+    check("s10 observador", stop_observer < start_observer)
+    check("s10 identidad no aplicada", "NO se aplica automáticamente" in r.stdout)
+    record("restore_con_observador", r, observador_detenido_y_reiniciado=True,
+           verificacion_historial="AVISO sin PostgreSQL en laboratorio" if "AVISO" in r.stderr else "ejecutada")
 
 
 def main() -> int:
@@ -289,6 +353,7 @@ def main() -> int:
     record("rollback_a_legado_sin_observador", r, current=current_release(),
            observador=service_state("server-oficina-local-cloud"))
 
+    backup_and_restore(second)
     releases = sorted(p.name for p in (NS["/opt/server-oficina"] / "releases").iterdir())
     EVIDENCE["releases_conservadas"] = releases
     EVIDENCE["result"] = "INSTALLER_LAB_OK"
@@ -300,8 +365,8 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except AssertionError as exc:
-        EVIDENCE["result"] = f"FAIL: {exc}"
+    except Exception as exc:  # noqa: BLE001 - toda falla del laboratorio queda como evidencia
+        EVIDENCE["result"] = f"FAIL: {exc.__class__.__name__}: {exc}"
         (LAB / "evidence.json").write_text(json.dumps(EVIDENCE, indent=2, ensure_ascii=False))
         print(f"INSTALLER_LAB_FAIL {exc}", file=sys.stderr)
         raise SystemExit(1)

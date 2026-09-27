@@ -1,13 +1,28 @@
 #!/usr/bin/env bash
+# Acceso LAN a Server Oficina que sobrevive a cambios de router/SSID/DHCP.
+#
+# Antes se fijaba en UFW la subred vigente al instalar; al cambiar de red había
+# que reconfigurar a mano. Ahora la confianza es por red (SSID o cable) y la
+# subred se recalcula en cada cambio: ver scripts/lan_firewall.py.
+#
+#   sudo ./scripts/configurar-acceso-lan.sh            instala y confía en la red actual si no hay ninguna
+#   sudo ./scripts/lan_firewall.py trust-current       confiar en la red actual (decisión explícita)
+#   sudo ./scripts/lan_firewall.py status              qué reglas corresponden ahora y por qué
 set -euo pipefail
 if [[ ${EUID:-$(id -u)} -ne 0 ]]; then echo "Ejecute con sudo/root" >&2; exit 1; fi
-IFACE=${1:-$(ip -4 route show default | awk 'NR==1{print $5}')}
-[[ -n "$IFACE" ]] || { echo "No se detectó interfaz por defecto" >&2; exit 2; }
-SUBNET=$(ip -4 route show dev "$IFACE" scope link | awk '$1 ~ /^[0-9].*\// {print $1; exit}')
-[[ -n "$SUBNET" ]] || { echo "No se detectó subred IPv4 de $IFACE" >&2; exit 3; }
-if command -v ufw >/dev/null 2>&1 && ufw status | grep -q '^Status: active'; then
-  ufw allow in on "$IFACE" from "$SUBNET" to any port 8080 proto tcp comment 'Server Oficina LAN'
-  echo "Acceso HTTP permitido sólo desde $SUBNET por $IFACE hacia 8080/tcp"
-else
+SRC=$(cd "$(dirname "$0")/.." && pwd)
+if ! command -v ufw >/dev/null 2>&1 || ! ufw status | grep -q '^Status: active'; then
   echo "UFW no está activo. No se modificó firewall." >&2
+  exit 0
 fi
+install -m 0644 "$SRC/deploy/lan-firewall/server-oficina-lan-firewall.service" /etc/systemd/system/server-oficina-lan-firewall.service
+install -m 0644 "$SRC/deploy/lan-firewall/server-oficina-lan-firewall.timer" /etc/systemd/system/server-oficina-lan-firewall.timer
+if [[ -d /etc/NetworkManager/dispatcher.d ]]; then
+  install -m 0755 "$SRC/deploy/lan-firewall/90-server-oficina-lan" /etc/NetworkManager/dispatcher.d/90-server-oficina-lan
+  echo "Dispatcher NetworkManager instalado"
+else
+  echo "Sin NetworkManager: sólo el timer de respaldo (cada 2 min) reconcilia UFW"
+fi
+systemctl daemon-reload
+python3 "$SRC/scripts/lan_firewall.py" apply --trust-current-if-empty
+systemctl enable --now server-oficina-lan-firewall.timer

@@ -190,3 +190,16 @@ def test_manifest_check_detects_unlisted_changed_and_missing_files(tmp_path: Pat
     assert run("--check").returncode != 0
     (tree / "a.txt").unlink()
     assert run("--check").returncode != 0
+
+
+def test_lan_firewall_units_are_installed_and_point_to_the_reconciler():
+    script = (ROOT / "scripts" / "configurar-acceso-lan.sh").read_text(encoding="utf-8")
+    for name in ("server-oficina-lan-firewall.service", "server-oficina-lan-firewall.timer",
+                 "90-server-oficina-lan"):
+        assert (ROOT / "deploy" / "lan-firewall" / name).is_file()
+        assert f"deploy/lan-firewall/{name}" in script
+    unit = (ROOT / "deploy" / "lan-firewall" / "server-oficina-lan-firewall.service").read_text(encoding="utf-8")
+    assert "/opt/server-oficina/current/scripts/lan_firewall.py apply" in unit
+    # Nunca una regla abierta a cualquier origen ni fijada a una subred concreta.
+    assert "allow" not in script.replace("lan_firewall.py", "")
+    assert not re.search(r"\d+\.\d+\.\d+\.\d+/\d+", script)
