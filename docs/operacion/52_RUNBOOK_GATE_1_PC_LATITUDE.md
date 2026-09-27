@@ -282,9 +282,67 @@ Test-NetConnection server-oficina.local -Port 22000
 ssh adminoficina@server-oficina.local "hostname; ip -br addr"
 ```
 
-Si la PC no resuelve `.local` (resolvedor de Windows sin mDNS), se anota como
-hallazgo de la PC —no de la Latitude—, se verifica el anuncio desde otro equipo
-de esa LAN si lo hay, y el resto del paso se hace con la IP de esa LAN.
+Si la PC no resuelve `.local`, se anota como FAIL y se diagnostica por capas
+(§7.2.1) antes de atribuirlo a la PC, a la red o a la Latitude; mientras tanto
+el resto del paso se hace con la IP de esa LAN. **Nunca** se oculta con una
+entrada en `hosts` de Windows.
+
+#### 7.2.1 · `.local` no resuelve: diagnóstico por capas (sólo lectura)
+
+| Capa | Pregunta | Evidencia |
+|---|---|---|
+| 1 | ¿Avahi anuncia el nombre por la interfaz de esa LAN, con su IP? | journal de Avahi (`Registering new address record for <IP> on <if>.IPv4`) y, en la captura, respuestas de la Latitude **sólo** con la IP de esa interfaz (`direcciones_ajenas` vacía) |
+| 2 | ¿cruza el multicast UDP 5353 la LAN? | la captura de la Latitude ve mDNS de otros equipos; la de la PC ve paquetes de la Latitude |
+| 3 | ¿envía la PC la consulta y le llega la respuesta? | consultas de la PC en la captura de la Latitude; respuesta de la Latitude en la captura de la PC |
+| 4 | ¿acepta Windows la respuesta y resuelve? | `Resolve-DnsName`/`ping` con la respuesta ya presente en la captura de la PC; perfil de red, reglas mDNS del firewall y `EnableMDNS` |
+
+En la Latitude, durante la prueba de la PC (el capturador no envía nada ni
+necesita tcpdump; `--pcap` guarda sólo las tramas UDP 5353):
+
+```bash
+sudo python3 scripts/diagnostico_mdns.py --interfaz <if> --peer <IP de la PC> --segundos 180 \
+     --pcap ~/server-oficina-evidencia/MDNS-LAT-$(date +%Y%m%d-%H%M%S).pcap
+```
+
+Termina con `DIAGNOSTICO: <código>` y una línea `MDNS_DIAG {json}`:
+
+| Código | Lectura |
+|---|---|
+| `LATITUDE_RESPONDE` | la consulta llegó y la respuesta salió por la interfaz: si la PC no resuelve, la respuesta no le llega (punto de acceso) o Windows la descarta (capas 3–4, ver la captura de la PC) |
+| `LATITUDE_NO_RESPONDE` | defecto del lado Latitude: **detener el gate** |
+| `LATITUDE_ANUNCIA_DIRECCION_AJENA` | la respuesta lleva una IP que no es de esa interfaz (p. ej. Docker): **detener el gate** |
+| `CONSULTAS_DE_LA_PC_NO_LLEGAN` | llega mDNS de otros equipos pero no de la PC: la PC no envía o el punto de acceso aísla a ese cliente |
+| `PC_NO_PREGUNTA_POR_EL_NOMBRE` | llega mDNS de la PC, pero nunca por el nombre: su resolvedor no usa mDNS para él |
+| `SIN_MULTICAST_ENTRANTE` | no llegó mDNS de nadie: la red no entrega multicast a la Latitude (o nadie consultó) |
+| `CONFLICTO_NOMBRE` | otro equipo responde con el mismo nombre |
+
+`getent hosts server-oficina.local` **en la propia Latitude** puede devolver la
+IP de un bridge de Docker (`172.17.0.1`/`172.18.0.1`): la resolución local reúne
+las direcciones de todas las interfaces. No es lo que recibe la PC: Avahi
+responde en cada interfaz sólo con la dirección de esa interfaz (lo comprueba
+la captura y el laboratorio multi-LAN).
+
+En la PC (PowerShell **como administrador**; sólo lectura salvo vaciar la
+caché DNS y la captura de pktmon, que se retira al final):
+
+```powershell
+Get-NetConnectionProfile | Format-List InterfaceAlias,NetworkCategory,IPv4Connectivity
+Get-NetFirewallProfile | Format-Table Name,Enabled,DefaultInboundAction,AllowUnicastResponseToMulticast
+Get-NetFirewallRule -PolicyStore ActiveStore | Where-Object { $_.Name -like 'MDNS*' -or $_.DisplayName -like '*mDNS*' } |
+  Format-Table Name,DisplayName,Profile,Direction,Enabled,Action
+Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\Dnscache\Parameters' -ErrorAction SilentlyContinue | Select-Object EnableMDNS
+Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient' -ErrorAction SilentlyContinue | Select-Object EnableMulticast,EnableMDNS
+$ev = "$env:USERPROFILE\Desktop\MDNS-PC-$(Get-Date -Format yyyyMMdd-HHmmss)"
+pktmon filter remove; pktmon filter add MDNS -p 5353
+pktmon start --capture --pkt-size 0 --file-name "$ev.etl"
+Clear-DnsClientCache
+Resolve-DnsName server-oficina.local -Type A
+ping -4 -n 2 server-oficina.local
+ssh server-oficina "avahi-resolve -4 -n $env:COMPUTERNAME.local"   # la Latitude consulta a la PC: multicast en sentido contrario
+pktmon counters
+pktmon stop; pktmon etl2txt "$ev.etl" --out "$ev.txt"; pktmon etl2pcap "$ev.etl" --out "$ev.pcapng"; pktmon filter remove
+Get-FileHash "$ev.txt","$ev.pcapng" -Algorithm SHA256
+```
 
 `server-oficina.local` lo anuncia Avahi con el hostname del sistema en cada
 interfaz, y cada interfaz responde con **su** dirección: por cable debe resolver

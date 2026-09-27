@@ -70,7 +70,13 @@ Rama `claude/syncthing-phase1-integration-v0.2` sobre `agent/openai/sync-core-v0
   real en namespace aislado (21 escenarios, incl. LAN fail-closed y Ethernet +
   Wi-Fi), restore real contra PostgreSQL efímero (9 escenarios) y red real
   multi-LAN en namespaces de red con UFW, Avahi y Syncthing reales (11 fases);
-- CI en ramas `agent/**` y `claude/**`, sin `pull_request_target` ni secretos.
+- CI en ramas `agent/**` y `claude/**`, sin `pull_request_target` ni secretos;
+- gate físico 1: la evidencia PRE/POST ya no oculta el código de salida de
+  `lan_firewall.py audit` (antes: `[rc=0]` y "no disponible" tras un problema
+  real) y recoge las precondiciones del instalador; `scripts/diagnostico_mdns.py`
+  captura UDP 5353 (AF_PACKET, sin enviar nada) y separa por capas un fallo de
+  `.local` (anuncio, multicast en la LAN, consulta de la PC, respuesta), también
+  dentro del laboratorio multi-LAN.
 
 ## 0.2.0-alpha.1 — candidato 2026-09-21
 

@@ -309,6 +309,19 @@ def mdns(pc: str, target: str = "224.0.0.251") -> str:
     return ns(pc, "python3", str(LAB / "mdns_query.py"), "server-oficina.local", target).stdout.strip()
 
 
+def mdns_diag(iface: str, pc: str, pc_ip: str) -> dict:
+    """scripts/diagnostico_mdns.py real (AF_PACKET) en la Latitude mientras la PC consulta por multicast."""
+    proc = subprocess.Popen(["ip", "netns", "exec", P + "hub", "python3", str(REPO / "scripts" / "diagnostico_mdns.py"),
+                             "--interfaz", iface, "--peer", pc_ip, "--nombre", "server-oficina.local",
+                             "--segundos", "5"], text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    time.sleep(1.5)
+    mdns(pc)
+    out = proc.communicate(timeout=30)[0]
+    match = re.search(r"^MDNS_DIAG (.*)$", out, re.M)
+    check("diagnóstico mDNS", proc.returncode == 0 and match is not None, out[-1500:])
+    return json.loads(match.group(1))
+
+
 # ---------------------------------------------------------------- Syncthing
 
 def st(node: str, method: str, path: str, payload: dict | None = None):
@@ -386,8 +399,15 @@ def scenarios():
     check("0 sin publicar", code == 3 and lab_rules() == [], str(lab_rules()))
     check("0 HTTP bloqueado", not http_ok("pca", HUB_A) and not http_ok("pcb", HUB_B))
     check("0 mDNS unicast bloqueado", mdns("pca", HUB_A) == "" and mdns("pcb", HUB_B) == "")
+    # Como la Latitude real ahora: sin reglas 5353 propias. La consulta multicast de la PC llega y la
+    # respuesta por la Wi-Fi lleva sólo la IP de la Wi-Fi (ni la de Ethernet ni otra interfaz).
+    diag = mdns_diag(WIFI, "pcb", PC_B)
+    check("0 diagnóstico mDNS Wi-Fi", diag["diagnostico"] == "LATITUDE_RESPONDE"
+          and diag["direcciones_anunciadas"] == [HUB_B] and diag["direcciones_ajenas"] == [], json.dumps(diag))
     record("0_sin_lan_confiable", redes={n["iface"]: n["status"] for n in report["networks"]},
            http_bloqueado=True, mdns_multicast_pc_a=mdns("pca"), mdns_multicast_pc_b=mdns("pcb"),
+           diagnostico_mdns_wifi={k: diag[k] for k in ("diagnostico", "direcciones_anunciadas",
+                                                       "consultas_peer_nombre", "destinos_respuesta")},
            nota="Avahi responde al multicast mDNS en cualquier LAN (before.rules de UFW); 8080/22000 cerrados")
 
     # 1 · Ethernet + Wi-Fi confiadas a la vez, con Syncthing y mDNS.
