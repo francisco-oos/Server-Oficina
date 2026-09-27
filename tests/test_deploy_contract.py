@@ -203,3 +203,20 @@ def test_lan_firewall_units_are_installed_and_point_to_the_reconciler():
     # Nunca una regla abierta a cualquier origen ni fijada a una subred concreta.
     assert "allow" not in script.replace("lan_firewall.py", "")
     assert not re.search(r"\d+\.\d+\.\d+\.\d+/\d+", script)
+
+
+def test_lan_publication_is_fail_closed():
+    """La API se instala en loopback y sólo se publica tras firewall + red confiable verificados."""
+    assert "APP_HOST=127.0.0.1" in INSTALLER
+    assert "APP_HOST=0.0.0.0" not in INSTALLER
+    assert "configurar-acceso-lan.sh\" || true" not in INSTALLER
+    assert "configurar-acceso-lan.sh || true" not in INSTALLER
+    assert "exit 10" in INSTALLER and "INSTALACION_SOLO_LOCAL" in INSTALLER
+    # El rollback devuelve también la configuración previa (host incluido).
+    rollback = INSTALLER.split("rollback() {", 1)[1].split("\n}\n", 1)[0]
+    assert 'cp -p "$ENV_OLD" "$ENV_FILE"' in rollback
+    lan = (ROOT / "scripts" / "configurar-acceso-lan.sh").read_text(encoding="utf-8")
+    assert "apply --require-rules" in lan and "--trust-current-if-empty" not in lan
+    assert "Default: (deny|reject)" in lan
+    assert lan.index("set_host 0.0.0.0") > lan.index("apply --require-rules")
+    assert "ufw disable" not in lan and "ufw --force disable" not in lan

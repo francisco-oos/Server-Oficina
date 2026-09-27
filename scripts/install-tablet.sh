@@ -2,6 +2,13 @@
 set -euo pipefail
 if [[ ${EUID:-$(id -u)} -ne 0 ]]; then echo "Ejecute con sudo/root" >&2; exit 1; fi
 SRC=$(cd "$(dirname "$0")/.." && pwd)
+TRUST_LAN=0
+for arg in "$@"; do
+  case "$arg" in
+    --confiar-red-actual) TRUST_LAN=1 ;;  # decisión explícita: confiar en la red actual
+    *) echo "Uso: $0 [--confiar-red-actual]" >&2; exit 2 ;;
+  esac
+done
 # shellcheck source=scripts/lib-release.sh
 source "$SRC/scripts/lib-release.sh"
 VERSION=$(tr -d '[:space:]' < "$SRC/VERSION")
@@ -105,8 +112,11 @@ chmod 750 "$PREBACK"; chmod 640 "$PREBACK"/* 2>/dev/null || true
 echo "PRE_UPGRADE_BACKUP_OK: $PREBACK"
 
 DBPASS=$(cat "$DATA/secrets/postgres_password")
+# Fail-closed: la API se instala sólo en loopback. configurar-acceso-lan.sh la
+# publica en la LAN únicamente tras demostrar firewall + red confiable.
 APP_HOST=127.0.0.1
-if command -v ufw >/dev/null 2>&1 && ufw status | grep -q '^Status: active'; then APP_HOST=0.0.0.0; fi
+LAN_EXPECTED=0
+if command -v ufw >/dev/null 2>&1 && ufw status | grep -q '^Status: active'; then LAN_EXPECTED=1; fi
 DBPASS_URL=$(DBPASS="$DBPASS" python3 - <<'PY'
 import os
 from urllib.parse import quote_plus
@@ -164,6 +174,8 @@ rollback() {
   echo "$1: intentando rollback de release" >&2
   if [[ -n "$PREVIOUS" && -d "$PREVIOUS" ]]; then
     swap_current "$PREVIOUS"
+    # La release previa vuelve con su configuración previa (incluido el host).
+    if [[ -n "$ENV_OLD" && -f "$ENV_OLD" ]]; then cp -p "$ENV_OLD" "$ENV_FILE"; fi
   fi
   # El observador vuelve a su estado previo; una release sin worker no puede ejecutarlo.
   if [[ "$LOCAL_CLOUD_WAS_ENABLED" != "enabled" || -z "$PREVIOUS" || ! -f "$PREVIOUS/app/workers/local_cloud_worker.py" ]]; then
@@ -209,12 +221,35 @@ if [[ "$LC_STATE" != "active" || "$LC_RESTARTS" != "0" ]]; then
 fi
 echo "LOCAL_CLOUD_OK: $LOCAL_CLOUD activo"
 
-if command -v ufw >/dev/null 2>&1 && ufw status | grep -q '^Status: active'; then "$RELEASE/scripts/configurar-acceso-lan.sh" || true; fi
+LAN_STATUS="NO habilitada: UFW no está activo (Server Oficina sólo en 127.0.0.1)"
+LAN_RC=0
+if [[ $LAN_EXPECTED == 1 ]]; then
+  LAN_ARGS=()
+  [[ $TRUST_LAN == 1 ]] && LAN_ARGS+=(--confiar-red-actual)
+  if "$RELEASE/scripts/configurar-acceso-lan.sh" "${LAN_ARGS[@]}"; then
+    LAN_STATUS="PUBLICADA sólo en la subred de la red confiable actual"
+  else
+    LAN_RC=$?
+    LAN_STATUS="NO publicada (código $LAN_RC): ver LAN_NO_PUBLICADA arriba"
+  fi
+fi
+# Defensa en profundidad: sin publicación verificada la API jamás queda en 0.0.0.0.
+if [[ "$LAN_STATUS" != PUBLICADA* ]] && ! grep -qx 'SERVER_OFICINA_HOST=127.0.0.1' "$ENV_FILE"; then
+  sed -i 's/^SERVER_OFICINA_HOST=.*/SERVER_OFICINA_HOST=127.0.0.1/' "$ENV_FILE"
+  systemctl restart server-oficina
+fi
 if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then "$RELEASE/scripts/install-desktop-launchers.sh" || true; fi
 IP=$(hostname -I | awk '{print $1}')
 echo "Instalado: Server Oficina $VERSION ($RELEASE_ID)"
 echo "Release actual: $(readlink -f "$CURRENT")"
 echo "Release previa conservada para rollback: ${PREVIOUS:-NINGUNA}"
 echo "Local: http://127.0.0.1:8080"
-if [[ "$APP_HOST" == "0.0.0.0" ]]; then echo "LAN:   http://${IP:-IP_DE_LA_TABLET}:8080 (UFW activo; revisar regla de subred)"; else echo "LAN:   NO habilitada: UFW no estaba activo"; fi
+echo "LAN:   $LAN_STATUS"
+[[ "$LAN_STATUS" == PUBLICADA* ]] && echo "       http://${IP:-IP_DE_LA_TABLET}:8080"
 echo "NAS/evidencias: configure desde la UI; no hay rutas de campamento hardcodeadas."
+if [[ $LAN_EXPECTED == 1 && "$LAN_STATUS" != PUBLICADA* ]]; then
+  # Se esperaba publicar en la LAN y no pudo demostrarse: no se declara sana.
+  echo "INSTALACION_SOLO_LOCAL: release sana en 127.0.0.1, LAN no publicada." >&2
+  echo "Tras verificar la red: sudo $RELEASE/scripts/configurar-acceso-lan.sh --confiar-red-actual" >&2
+  exit 10
+fi

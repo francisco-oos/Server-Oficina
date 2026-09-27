@@ -39,14 +39,63 @@ NS = {  # ruta real en el namespace -> directorio del laboratorio
     "/srv/server-oficina": LAB / "srv",
     "/etc/server-oficina": LAB / "etc-so",
     "/etc/systemd/system": LAB / "etc-systemd",
+    # Estado del reconciliador LAN y dispatcher de NetworkManager: nada fuera del sandbox.
+    "/var/lib/server-oficina": LAB / "var-lib",
+    "/etc/NetworkManager/dispatcher.d": LAB / "nm-dispatcher",
 }
 EVIDENCE: dict = {"scenarios": []}
+
+UFW_STUB = r"""
+exec python3 - "$@" <<'STUB'
+import json, os, sys
+db = os.path.join(os.environ["LAB_STATE"], "ufw.json")
+state = json.load(open(db)) if os.path.exists(db) else {"rules": []}
+active = os.environ.get("LAB_UFW", "inactive") == "active"
+args = sys.argv[1:]
+def save(): json.dump(state, open(db, "w"))
+if args[:1] == ["status"]:
+    print("Status: active" if active else "Status: inactive")
+    if args[1:] == ["verbose"] and active:
+        print(f"Default: {os.environ.get('LAB_UFW_DEFAULT', 'deny')} (incoming), allow (outgoing), disabled (routed)")
+    if args[1:] == ["numbered"]:
+        for i, r in enumerate(state["rules"], 1):
+            print(f"[{i:2d}] {r['spec']}   # {r['comment']}")
+elif args[:2] == ["--force", "delete"]:
+    del state["rules"][int(args[2]) - 1]; save()
+elif args[:1] == ["allow"]:
+    if os.environ.get("LAB_UFW_FAIL_ALLOW") == "1":
+        print("ERROR: fallo simulado del reconciliador", file=sys.stderr); sys.exit(1)
+    spec, comment = " ".join(args[1:args.index("comment")]), args[args.index("comment") + 1]
+    state["rules"].append({"spec": spec, "comment": comment}); save()
+else:
+    sys.exit(2)
+STUB
+"""
+
+IP_STUB = r"""
+exec python3 - "$@" <<'STUB'
+import json, os, sys
+n = json.load(open(os.path.join(os.environ["LAB_STATE"], "net.json")))
+args = sys.argv[1:]
+if "neigh" in args:
+    print(f"{n['gw']} lladdr {n['gw_mac']} REACHABLE")
+elif "default" in args:
+    print(f"default via {n['gw']} dev {n['iface']} proto dhcp metric 100")
+else:
+    print(f"{n['subnet']} proto kernel scope link src {n['ip']} metric 100")
+STUB
+"""
 
 STUBS = {
     "apt-get": "exit 0\n",
     "journalctl": "exit 0\n",
     "sleep": "exit 0\n",
-    "ufw": 'echo "Status: inactive"\n',
+    "ping": "exit 0\n",
+    # NetworkManager ausente: el reconciliador usa la huella sin perfil (gateway + medio).
+    "nmcli": 'echo "Error: NetworkManager is not running." >&2; exit 8\n',
+    # UFW con estado: LAB_UFW=active|inactive, LAB_UFW_DEFAULT=deny|allow, LAB_UFW_FAIL_ALLOW=1.
+    "ufw": UFW_STUB,
+    "ip": IP_STUB,
     "date": (
         'if [[ "${1:-}" == "+%Y%m%d-%H%M%S" && -n "${LAB_STAMP:-}" ]]; then echo "$LAB_STAMP"; exit 0; fi\n'
         'exec /bin/date "$@"\n'
@@ -85,7 +134,7 @@ case "${1:-}" in
   disable) shift; [[ "${1:-}" == --now ]] && shift; for u in "$@"; do rm -f "$LAB_STATE/$u.enabled"; [[ $now == 1 ]] && echo inactive > "$LAB_STATE/$u.active"; done; exit 0 ;;
   restart|start) start "$2"; exit 0 ;;
   is-enabled) if [[ -f "$LAB_STATE/$2.enabled" ]]; then echo enabled; exit 0; fi; echo disabled; exit 1 ;;
-  is-active) s=$(cat "$LAB_STATE/$2.active" 2>/dev/null || echo inactive); echo "$s"; [[ $s == active ]] ;;
+  is-active) u="${!#}"; s=$(cat "$LAB_STATE/$u.active" 2>/dev/null || echo inactive); [[ "$2" == --quiet ]] || echo "$s"; [[ $s == active ]] ;;
   show)
     unit="${!#}"; f="$LAB_STATE/$unit.restarts"; n=$(cat "$f" 2>/dev/null || echo 0)
     if [[ "$unit" == server-oficina-local-cloud && $broken == 1 ]]; then n=$((n+1)); echo $n > "$f"; fi
@@ -147,8 +196,8 @@ def prepare():
     return src
 
 
-def run_installer(src: Path, name: str, **env_extra) -> subprocess.CompletedProcess:
-    return run_in_ns(f'exec "{src}/scripts/install-tablet.sh"', name, **env_extra)
+def run_installer(src: Path, name: str, *args: str, **env_extra) -> subprocess.CompletedProcess:
+    return run_in_ns(f'exec "{src}/scripts/install-tablet.sh" {" ".join(args)}', name, **env_extra)
 
 
 def run_in_ns(command: str, name: str, *, pre: str = "", **env_extra) -> subprocess.CompletedProcess:
@@ -186,6 +235,67 @@ def tree_digest(path: Path) -> str:
 def mode(path: Path) -> str:
     st = path.stat()
     return f"{st.st_uid}:{st.st_gid}:{stat.S_IMODE(st.st_mode):04o}"
+
+
+def env_host() -> str:
+    text = (NS["/etc/server-oficina"] / "server-oficina.env").read_text()
+    return next(l.split("=", 1)[1] for l in text.splitlines() if l.startswith("SERVER_OFICINA_HOST="))
+
+
+def managed_rules() -> list[str]:
+    db = STATE / "ufw.json"
+    rules = json.loads(db.read_text())["rules"] if db.exists() else []
+    return [r["spec"] for r in rules if r["comment"] == "server-oficina-lan"]
+
+
+def set_network(**values):
+    base = {"iface": "eth0", "gw": "192.168.48.1", "ip": "192.168.48.109",
+            "subnet": "192.168.48.0/24", "gw_mac": "aa:bb:cc:00:00:01"}
+    (STATE / "net.json").write_text(json.dumps({**base, **values}))
+
+
+def lan_fail_closed(src: Path) -> str:
+    """Publicación LAN fail-closed: sin demostración, la API queda en 127.0.0.1 y no se declara sana."""
+    ssh = {"spec": "22/tcp ALLOW IN Anywhere", "comment": "ssh"}
+    legacy = {"spec": "8080/tcp on eth0 ALLOW IN 192.168.48.0/24", "comment": "Server Oficina LAN"}
+    (STATE / "ufw.json").write_text(json.dumps({"rules": [ssh, legacy]}))
+    set_network()
+    configure = "exec /opt/server-oficina/current/scripts/configurar-acceso-lan.sh"
+
+    r = run_installer(src, "s2a_lan_sin_red_confiable", LAB_UFW="active")
+    rules = json.loads((STATE / "ufw.json").read_text())["rules"]
+    check("s2a", r.returncode == 10 and "LAN_NO_PUBLICADA" in r.stderr and "INSTALACION_SOLO_LOCAL" in r.stderr,
+          f"exit={r.returncode} {r.stderr[-800:]}")
+    check("s2a loopback", env_host() == "127.0.0.1", env_host())
+    check("s2a reglas", managed_rules() == [] and ssh in rules and legacy not in rules, str(rules))
+    record("lan_sin_red_confiable_no_declara_sana", r, host=env_host(), reglas_lan=managed_rules(),
+           ssh_intacta=ssh in rules, regla_legado_subred_eliminada=legacy not in rules)
+
+    r = run_installer(src, "s2b_lan_reconciliador_falla", "--confiar-red-actual",
+                      LAB_UFW="active", LAB_UFW_FAIL_ALLOW="1")
+    check("s2b", r.returncode == 10 and "LAN_NO_PUBLICADA" in r.stderr, f"exit={r.returncode} {r.stderr[-800:]}")
+    check("s2b loopback", env_host() == "127.0.0.1" and managed_rules() == [], env_host())
+    record("lan_reconciliador_falla_api_solo_loopback", r, host=env_host(), reglas_lan=managed_rules())
+
+    r = run_installer(src, "s2c_lan_publicada", "--confiar-red-actual", LAB_UFW="active")
+    check("s2c", r.returncode == 0 and "LAN_PUBLICADA" in r.stdout, f"exit={r.returncode} {r.stderr[-800:]}")
+    expected = ["in on eth0 from 192.168.48.0/24 to any port 8080 proto tcp"]
+    check("s2c publicada", env_host() == "0.0.0.0" and managed_rules() == expected, f"{env_host()} {managed_rules()}")
+    check("s2c ssh", ssh in json.loads((STATE / "ufw.json").read_text())["rules"])
+    record("lan_publicada_con_red_confiable", r, host=env_host(), reglas_lan=managed_rules())
+
+    r = run_in_ns(configure, "s2d_ufw_politica_allow", LAB_UFW="active", LAB_UFW_DEFAULT="allow")
+    check("s2d", r.returncode == 10 and env_host() == "127.0.0.1", f"exit={r.returncode} host={env_host()}")
+    record("ufw_politica_allow_despublica", r, host=env_host())
+
+    run_in_ns(configure, "s2e_republicar", LAB_UFW="active")
+    check("s2e republicada", env_host() == "0.0.0.0" and managed_rules() == expected, env_host())
+    set_network(gw_mac="aa:bb:cc:99:99:99")  # misma eth0, otra LAN
+    r = run_in_ns(configure, "s2e_misma_interfaz_otra_red", LAB_UFW="active")
+    check("s2e", r.returncode == 10 and env_host() == "127.0.0.1" and managed_rules() == [],
+          f"exit={r.returncode} host={env_host()} {managed_rules()}")
+    record("misma_interfaz_otra_red_despublica", r, host=env_host(), reglas_lan=managed_rules())
+    return current_release()
 
 
 def reset_state():
@@ -320,6 +430,8 @@ def main() -> int:
     record("reinstalar_misma_version", r, release=second, previa=first, previa_intacta=True,
            env_operador_conservado=True)
 
+    second = lan_fail_closed(src)
+
     # 3 · colisión forzada: mismo instante => directorio existente => no se toca nada
     stamp = second.rsplit("+", 1)[1].split(".", 1)[0]
     r = run_installer(src, "s3_colision", LAB_STAMP=stamp)
@@ -327,12 +439,20 @@ def main() -> int:
     check("s3 current intacto", current_release() == second)
     record("colision_de_release", r, current=current_release())
 
-    # 4 · health falla => rollback a la release previa
+    # 4 · health falla => rollback a la release previa CON su configuración previa
+    env_file = NS["/etc/server-oficina"] / "server-oficina.env"
+    # Release previa publicada en LAN (0.0.0.0): la candidata escribe 127.0.0.1;
+    # tras el rollback debe volver exactamente la configuración previa.
+    env_file.write_text(env_file.read_text().replace("SERVER_OFICINA_HOST=127.0.0.1", "SERVER_OFICINA_HOST=0.0.0.0"))
+    before_env = env_file.read_text()
+    assert "SERVER_OFICINA_HOST=0.0.0.0" in before_env
     r = run_installer(src, "s4_health", LAB_BREAK_HEALTH="1", LAB_GOOD_CURRENT=second)
     check("s4", r.returncode == 5 and "ROLLBACK_RELEASE_OK" in r.stderr, r.stderr[-1500:])
     check("s4 current", current_release() == second)
+    check("s4 env previo restaurado", env_file.read_text() == before_env)
     check("s4 observador intacto", service_state("server-oficina-local-cloud")["enabled"])
-    record("health_fail_rollback", r, current=current_release(), observador=service_state("server-oficina-local-cloud"))
+    record("health_fail_rollback", r, current=current_release(), env_previo_restaurado=True,
+           observador=service_state("server-oficina-local-cloud"))
 
     # 5 · observador en bucle de reinicios => rollback; la previa tenía observador activo
     r = run_installer(src, "s5_observador", LAB_BREAK_WORKER="1", LAB_GOOD_CURRENT=second)
