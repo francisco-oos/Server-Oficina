@@ -10,15 +10,23 @@ User=serveroficina
 Group=serveroficina
 WorkingDirectory=/opt/server-oficina/current
 EnvironmentFile=/etc/server-oficina/server-oficina.env
+Environment=PYTHONDONTWRITEBYTECODE=1
 ExecStart=/opt/server-oficina/current/.venv/bin/python -m app.workers.local_cloud_worker --interval 5 --settle 1
 Restart=on-failure
 RestartSec=5
 UMask=0007
 NoNewPrivileges=true
 PrivateTmp=true
-ProtectSystem=full
 ProtectHome=true
-ReadWritePaths=/srv/server-oficina/data/app /srv/server-oficina/files /srv/server-oficina/versions
+# strict: todo el sistema es de sólo lectura para el observador. Las carpetas
+# sincronizadas (/srv/server-oficina/files) quedan legibles pero NO escribibles:
+# el observador jamás modifica ni borra archivos de trabajo. Sólo escribe el
+# ContentStore histórico (versions/), que install-tablet.sh crea antes de
+# arrancar. data/app no hace falta: sólo lee la configuración.
+ProtectSystem=strict
+ReadWritePaths=/srv/server-oficina/versions
 
 [Install]
-WantedBy=multi-user.target
+# Arranca también cuando se inicia server-oficina a mano (INICIAR_SERVER_OFICINA.sh):
+# Requires= propaga el stop, pero no el start.
+WantedBy=multi-user.target server-oficina.service

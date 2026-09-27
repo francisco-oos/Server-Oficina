@@ -24,7 +24,7 @@
 - un widget que falle se aísla: no se filtran trazas ni errores de base de datos a la interfaz;
 - la suite de pruebas no escribe dentro del árbol de código, de modo que una release
   instalada puede validarse sin debilitar permisos de `/opt`;
-- UFW recomendado: 8080 sólo desde subred LAN autorizada; el instalador sólo liga la app a `0.0.0.0` cuando detecta UFW activo, de lo contrario queda en `127.0.0.1`.
+- UFW recomendado. Publicación LAN fail-closed y multi-LAN (Ethernet + Wi-Fi a la vez): la app escucha en `127.0.0.1` salvo que se demuestre UFW activo con entrada por defecto `deny`/`reject`, al menos una LAN confiable (identidad por LAN: MAC del gateway + perfil NetworkManager + SSID, nunca sólo SSID o nombre de interfaz), reglas `in on <interfaz> from <subred RFC1918>` verificadas y health; si no, salida 10 (`INSTALACION_SOLO_LOCAL`). Si no queda ninguna LAN confiable, el reconciliador vuelve a `127.0.0.1`. La Latitude no enruta entre LAN (sin forwarding, bridge ni NAT). Ver `docs/operacion/07_INSTALACION_DEBIAN.md`.
 
 ## Límites de alpha
 

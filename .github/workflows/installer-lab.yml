@@ -1,0 +1,134 @@
+name: Installer Lab
+
+# Ejecuta scripts/install-tablet.sh real dentro de un namespace de montaje
+# aislado (tests/integration/installer_lab.py): instalación limpia y
+# reinstalación, colisión de release, rollback por health y por observador,
+# rollback a release legado, backup, réplica externa fail-closed y restore;
+# publicación LAN fail-closed. El job "restore" ejecuta scripts/restore.sh real
+# contra un PostgreSQL efímero (tests/integration/restore_lab.py): dump
+# truncado, fallo a mitad de pg_restore, vuelta atrás por health. El job
+# "multi-lan" monta una Latitude con Ethernet + Wi-Fi a la vez en namespaces
+# de red reales (UFW, Avahi y Syncthing reales; tests/integration/multi_lan_lab.py).
+# No sustituye al gate físico en la Latitude.
+on:
+  push:
+    branches:
+      - "agent/**"
+      - "claude/**"
+    paths:
+      - "scripts/**"
+      - "deploy/**"
+      - "INSTALAR_EN_TABLETA.sh"
+      - "VERSION"
+      - "MANIFEST.sha256"
+      - "requirements*.txt"
+      - "tests/integration/installer_lab.py"
+      - "tests/integration/restore_lab.py"
+      - "tests/integration/multi_lan_lab.py"
+      - ".github/workflows/installer-lab.yml"
+  pull_request:
+    paths:
+      - "scripts/**"
+      - "deploy/**"
+      - "INSTALAR_EN_TABLETA.sh"
+      - "VERSION"
+      - "MANIFEST.sha256"
+      - "requirements*.txt"
+      - "tests/integration/installer_lab.py"
+      - "tests/integration/restore_lab.py"
+      - "tests/integration/multi_lan_lab.py"
+      - ".github/workflows/installer-lab.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  installer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      LAB_ROOT: ${{ github.workspace }}/runtime/installer-lab
+    steps:
+      - uses: actions/checkout@v7
+
+      # Python 3.13 = python3 de Debian 13 en la Latitude.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Instalador real en namespace aislado
+        run: sudo -E -H env "PATH=$PATH" python3 tests/integration/installer_lab.py
+
+      - name: Evidencia
+        if: always()
+        run: |
+          sudo cat "$LAB_ROOT/evidence.json" || true
+          for f in "$LAB_ROOT"/s*.log; do echo "== $f"; sudo tail -n 40 "$f"; done || true
+
+  restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      LAB_ROOT: ${{ github.workspace }}/runtime/restore-lab
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # El laboratorio reproduce el defecto con el restore anterior (36a5ab8).
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: PostgreSQL (binarios de la distribución)
+        run: |
+          ls /usr/lib/postgresql/*/bin/pg_restore 2>/dev/null \
+            || { sudo apt-get update && sudo apt-get install -y postgresql; }
+          sudo systemctl stop postgresql || true
+
+      - name: Restore real contra PostgreSQL efímero
+        run: sudo -E -H env "PATH=$PATH" python3 tests/integration/restore_lab.py
+
+      - name: Evidencia
+        if: always()
+        run: |
+          sudo cat "$LAB_ROOT/evidence.json" || true
+          for f in "$LAB_ROOT"/r*.log; do echo "== $f"; sudo tail -n 40 "$f"; done || true
+
+  multi-lan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      LAB_ROOT: ${{ github.workspace }}/runtime/multi-lan-lab
+      SYNCTHING_VERSION: v2.1.5
+      SYNCTHING_SHA256: 3d222b609f7ab2944e02748cb10488b4160d446b49e0eafc107ef2a525ab3486
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Red, UFW y Avahi de la distribución
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y iproute2 ufw avahi-daemon curl iptables
+
+      - name: Descargar Syncthing verificado
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/syncthing.tgz" \
+            "https://github.com/syncthing/syncthing/releases/download/${SYNCTHING_VERSION}/syncthing-linux-amd64-${SYNCTHING_VERSION}.tar.gz"
+          echo "${SYNCTHING_SHA256}  $RUNNER_TEMP/syncthing.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/syncthing.tgz" -C "$RUNNER_TEMP"
+          echo "SYNCTHING_BIN=$RUNNER_TEMP/syncthing-linux-amd64-${SYNCTHING_VERSION}/syncthing" >> "$GITHUB_ENV"
+
+      - name: Latitude con Ethernet + Wi-Fi en namespaces de red
+        run: sudo -E -H env "PATH=$PATH" python3 tests/integration/multi_lan_lab.py
+
+      - name: Evidencia
+        if: always()
+        run: |
+          sudo cat "$LAB_ROOT/evidence.json" || true
+          sudo tail -n 30 "$LAB_ROOT/avahi.log" || true
+          for f in "$LAB_ROOT"/st-*.log; do echo "== $f"; sudo tail -n 20 "$f"; done || true

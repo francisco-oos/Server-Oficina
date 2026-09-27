@@ -23,6 +23,7 @@ responsabilidad para que la raíz de `docs/` permanezca pequeña y navegable.
 - `arquitectura/41_INTELIGENCIA_DOCUMENTAL_APRENDIZAJE.md`
 - `arquitectura/50_DESCUBRIMIENTO_RED_SIN_IP_FIJA.md` — discovery LAN sin IP fija
 - `arquitectura/51_SYNOLOGY_ARCHIVOS_PESADOS_Y_ACCESO_TRANSPARENTE.md` — almacenamiento jerárquico, NAS_DIRECT y placeholders
+- `arquitectura/53_FASE_1_SINCRONIZACION_OBSERVADOR.md` — arquitectura final Fase 1: observador, estados, DELETED vs no disponible, permisos, atribución y gates
 - `arquitectura/15_CONTRATOS_Y_GATES_MODULARES.md`
 - `arquitectura/16_MONOREPO_BACKEND_FRONTEND_OPERACION.md`
 - `arquitectura/18_EVIDENCIA_OPERATIVA_Y_TRAZABILIDAD_DE_FUENTES.md`
@@ -76,6 +77,7 @@ responsabilidad para que la raíz de `docs/` permanezca pequeña y navegable.
 - `operacion/24_ACTUALIZACION_Y_ROLLBACK_ALPHA2_ALPHA3.md`
 - `operacion/36_BACKUP_RESTORE.md`
 - `operacion/45_FASE_1_SINCRONIZACION_PC_LATITUDE.md`
+- `operacion/52_RUNBOOK_GATE_1_PC_LATITUDE.md` — PRE/instalación/POST y escenarios del gate físico 1
 
 ## Desarrollo
 

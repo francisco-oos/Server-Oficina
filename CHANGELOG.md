@@ -1,5 +1,83 @@
 # Changelog
 
+## 0.2.0-alpha.1 — integración Fase 1 Syncthing / observador (2026-09-27)
+
+Rama `claude/syncthing-phase1-integration-v0.2` sobre `agent/openai/sync-core-v0.2`
+(`ee5a8ef`). Candidata de laboratorio: **gates físicos en la Latitude pendientes**.
+
+### Observador Nube Local
+- el worker nunca había funcionado como servicio: caía con
+  `NoReferencedTableError` al primer archivo (corregido en el modelo);
+- `RECOVERED` al restaurar un archivo borrado con el mismo SHA; otro contenido
+  en la misma ruta es `MODIFIED`;
+- `DELETED` sólo con raíz confiable: raíz ausente, sin permisos, con E/S
+  fallida, sin `.stfolder`, montada sobre otro dispositivo o vacía sin verificar
+  deja el share `UNAVAILABLE` con código; un subdirectorio ilegible protege su
+  subárbol;
+- incidencias por archivo aisladas (nombre no portable, colisión de
+  mayúsculas, symlink, cambio durante la ingesta, espacio) y visibles en
+  `metadata.observer` del share;
+- huella `(tamaño, mtime, inodo, ctime)`: el SHA sólo se reutiliza con huella
+  idéntica; re-verificación tras archivar (carrera de escritura corregida);
+- nombres NFD o con espacios en disco ya se ingieren;
+- reserva de espacio configurable en `versions/`, limpieza de `.partial-*`
+  huérfanos, aislamiento de errores por share, log sin spam;
+- atribución técnica de **equipo** por `modifiedBy` de Syncthing (persona y
+  sesión requieren Companion);
+- `python -m app.workers.verify_history [--deep]` y `scripts/verificar-historial.sh`.
+
+### Instalación y operación
+- release `VERSION+fecha.gCOMMIT`, nunca reutilizada; `current` atómico;
+  primera instalación ya no deja `current` en bucle; código de la release de
+  root; PostgreSQL sano y backup pre-upgrade obligatorios antes de promover;
+- instala y activa `server-oficina-local-cloud` sólo tras health, con rollback
+  que restaura su estado previo; arranca con `server-oficina`;
+- permisos mínimos: `files/` sólo lectura para la app, `versions/` sólo para el
+  observador;
+- firewall LAN **multi-interfaz**: la Latitude puede estar en una LAN por
+  Ethernet y en otra por Wi-Fi a la vez; se publica en todas las LAN confiables
+  activas (reglas `in on <if> from <subred>` por LAN, reconciliación
+  incremental: una LAN que cae o cambia sólo toca sus reglas) y nunca enruta
+  entre ellas (sin forwarding, bridge ni NAT; `lan_firewall.py audit`);
+- confianza por **identidad de red de cada LAN** (MAC del gateway + perfil
+  NetworkManager + SSID; nunca sólo SSID o nombre de interfaz) que sigue
+  cambios de IP/DHCP sin fijar subredes; mismo SSID u otra LAN en el mismo
+  cable no heredan confianza; `trust-current --interface IF` y
+  `--confiar-interfaz IF` (con dos LAN activas, `--confiar-red-actual` se niega);
+  las confianzas `wifi:`/`wired:` antiguas se ignoran (`scripts/lan_firewall.py`);
+- el reconciliador mantiene la API en `0.0.0.0` mientras quede alguna LAN
+  confiable publicada y la devuelve a `127.0.0.1` si no queda ninguna o UFW
+  deja de proteger; `server-oficina.local` se anuncia (Avahi) en cada LAN con la
+  IP de esa LAN;
+- publicación LAN fail-closed: API en `127.0.0.1` salvo UFW activo con entrada
+  `deny`/`reject`, red confiable, reglas verificadas y health; si no, salida 10
+  `INSTALACION_SOLO_LOCAL` (antes: `|| true` y `0.0.0.0` con sólo ver UFW
+  activo); `--confiar-red-actual` como decisión explícita; el rollback
+  restaura también el env;
+- backup con inventario de `versions/`, identidad Syncthing del hub y réplica
+  externa fail-closed; la retención ya no borra `pre-upgrade-*`;
+- restore sin restauración parcial: validación completa (SHA, dump y tar
+  leídos enteros), `pg_restore --single-transaction` en una base nueva,
+  intercambio de nombres en un único COMMIT conservando la base previa,
+  `imports/`/`evidence/` previos movidos (nunca borrados) con informe de
+  diferencias, vuelta atrás si falla el health; salidas 20–24 y archivo de
+  resultado. El restore anterior (`pg_restore --clean` sobre la base viva)
+  dejaba la base vaciada a medias con un dump truncado.
+
+### Calidad
+- MANIFEST estricto (`--check` detecta archivos no listados) en CI;
+- laboratorios en CI: Syncthing real + observador (19 escenarios), instalador
+  real en namespace aislado (21 escenarios, incl. LAN fail-closed y Ethernet +
+  Wi-Fi), restore real contra PostgreSQL efímero (9 escenarios) y red real
+  multi-LAN en namespaces de red con UFW, Avahi y Syncthing reales (11 fases);
+- CI en ramas `agent/**` y `claude/**`, sin `pull_request_target` ni secretos;
+- gate físico 1: la evidencia PRE/POST ya no oculta el código de salida de
+  `lan_firewall.py audit` (antes: `[rc=0]` y "no disponible" tras un problema
+  real) y recoge las precondiciones del instalador; `scripts/diagnostico_mdns.py`
+  captura UDP 5353 (AF_PACKET, sin enviar nada) y separa por capas un fallo de
+  `.local` (anuncio, multicast en la LAN, consulta de la PC, respuesta), también
+  dentro del laboratorio multi-LAN.
+
 ## 0.2.0-alpha.1 — candidato 2026-09-21
 
 Evolución local-first sobre 0.1.0-alpha.4. Los formatos de oficina continúan

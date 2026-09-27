@@ -86,6 +86,94 @@ Pendiente antes de lectores/LLM:
 - Separación completa `Core + Domain Pack` todavía no está terminada: existen
   módulos sísmicos explícitos en el repositorio.
 
+### Hallazgos del relevo 2026-09-27 (ver `reports/RELEVO_FASE1_20260927.md`)
+
+Corregidos en la rama candidata (con prueba automatizada):
+
+- el observador Nube Local no arrancaba como proceso independiente
+  (`NoReferencedTableError: projects`) — nunca había corrido fuera de pytest;
+- un archivo restaurado con el mismo mtime/tamaño quedaba tombstoned para siempre;
+- raíz de share ausente/desmontada registraba borrado masivo;
+- un archivo problemático (colisión de mayúsculas, symlink, desaparece durante
+  el hash) detenía el observador completo en bucle de reinicios;
+- SHA-256 recalculado cada 5 s para archivos tocados sin cambio de contenido;
+- `server-oficina-local-cloud.service` no se instalaba, sus `ReadWritePaths`
+  no existían y el env no fijaba `SYNC_ROOT`/`VERSIONS_ROOT`;
+- la release se nombraba sólo por VERSION: reinstalar la misma VERSION
+  sobrescribía en caliente el código activo y anulaba el rollback;
+- `MANIFEST.sha256` obsoleto: `VALIDAR_SERVER_OFICINA.sh` no llegaba a
+  `PACKAGE_OK` con CI verde.
+
+Abiertos:
+
+- **UFW por subred**: 8080/Syncthing sólo desde la subred vigente; si el router
+  nuevo usa otra subred el gate de cambio de Wi-Fi falla. Requiere decisión
+  (p. ej. RFC1918 en la interfaz LAN) antes del gate 24.
+- **Atribución de dispositivo** en el hub: sin Companion, `source_peer_id`
+  queda vacío; Syncthing conoce `modifiedBy` pero no se consulta aún.
+- **Rename** se registra como tombstone + documento nuevo (mismo SHA), sin
+  vínculo explícito de renombrado.
+- **Cuarentenas** (colisión, symlink, nombre no portable) sólo se registran en
+  el journal; falta exponerlas como revisión humana en la UI.
+- **Backup**: `backup.sh` no incluye `versions/` (ContentStore) ni la identidad
+  Syncthing del hub.
+- Syncthing de Debian (hub) y de Windows (PC) pueden diferir de mayor versión;
+  CI prueba sólo 2.1.5.
+
+### Estado tras la integración 2026-09-27 (rama `claude/syncthing-phase1-integration-v0.2`)
+
+Resueltos en código y probados en CI/laboratorio (**no** en la Latitude):
+
+- UFW por subred fija → reconciliador por red confiable (`scripts/lan_firewall.py`);
+  gate de cambio de Wi-Fi sigue pendiente de ejecución física.
+- Atribución de **equipo** vía `modifiedBy` de Syncthing (requiere API key y PC
+  registrada). Persona y sesión: siguen requiriendo Companion.
+- Backup de `versions/` (inventario + réplica externa opcional fail-closed) e
+  identidad Syncthing del hub; restore con verificación de historial.
+- Nueva auditoría: carrera hash/tamaño, reemplazo con igual tamaño y mtime,
+  nombres NFD, subárbol ilegible, EIO, raíz vacía/cambio de dispositivo,
+  `.partial` huérfanos, `current` en bucle en primera instalación, código de
+  release editable por el operador, backup pre-upgrade omitido, retención que
+  borraba `pre-upgrade-*`, observador caído tras DETENER/INICIAR.
+
+Endurecimiento final (mismo PR, 2026-09-27), probado en CI/laboratorio, **no** en la Latitude:
+
+- Identidad de red del firewall: MAC del gateway + perfil NetworkManager + SSID
+  (antes `wifi:<SSID>` / `wired:<iface>`: otra red con el mismo SSID o la misma
+  `eth0` en otra LAN heredaba la confianza). Router reemplazado exige
+  `trust-current`.
+- Instalación fail-closed: la API ya no pasa a `0.0.0.0` sólo por ver UFW
+  activo ni se ignora un fallo del reconciliador (`|| true`); sin publicación
+  demostrada queda en `127.0.0.1` y la instalación sale con 10.
+- Restore: el dump se restaura en una base nueva en una sola transacción y se
+  intercambia de forma atómica; antes `pg_restore --clean` sobre la base viva
+  dejaba una restauración parcial con un dump truncado.
+
+Multi-LAN (mismo PR, 2026-09-27), probado en CI/laboratorio (red real en
+namespaces), **no** en la Latitude:
+
+- La Latitude puede estar en Ethernet y Wi-Fi a la vez: antes sólo se publicaba
+  la interfaz de la ruta por defecto. Ahora cada LAN confiable activa tiene sus
+  reglas, su confianza y su recuperación independientes; la API sigue en
+  `0.0.0.0` mientras quede alguna LAN confiable y vuelve a `127.0.0.1` si no
+  queda ninguna. La Latitude no enruta entre LAN.
+- Decisión pendiente del responsable: UFW de Debian acepta mDNS multicast en
+  `before.rules`, así que en una LAN no confiable directamente conectada la
+  Latitude responde a `server-oficina.local` (sin abrir 8080/22000).
+
+Siguen abiertos:
+
+- Todos los gates físicos del runbook 52: PRE, instalación, systemd,
+  PostgreSQL, permisos, Syncthing hub, backup/restore, UFW, acceso por
+  Ethernet, por Wi-Fi y por ambas, pérdida/recuperación de cada interfaz,
+  `server-oficina.local` en cada LAN, reinicios, POST, 1 PC.
+- Rename/move sin vínculo explícito entre documentos.
+- Pantalla de revisión humana para incidencias y conflictos.
+- Retención/GC de `versions/` y configuración de la réplica externa real.
+- Syncthing del hub (Debian) vs PCs (Windows): versión mayor por confirmar.
+- Archivos muy grandes: tres lecturas al archivar y ciclo bloqueado mientras tanto.
+- Companion Windows (persona, sesión, journal offline, leases reales).
+
 ### Administración GitHub pendiente
 
 La integración GitHub usada por este trabajo no expone una mutación de
