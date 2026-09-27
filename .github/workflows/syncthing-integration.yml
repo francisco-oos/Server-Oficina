@@ -11,6 +11,8 @@ on:
       - "app/services/replica_guard.py"
       - "app/services/file_watcher.py"
       - "app/db/local_cloud_models.py"
+      - "app/services/document_registry.py"
+      - "app/workers/**"
       - "tests/integration/**"
       - ".github/workflows/syncthing-integration.yml"
   pull_request:
@@ -22,6 +24,8 @@ on:
       - "app/services/storage_resolver.py"
       - "app/services/file_watcher.py"
       - "app/db/local_cloud_models.py"
+      - "app/services/document_registry.py"
+      - "app/workers/**"
       - "tests/integration/**"
       - ".github/workflows/syncthing-integration.yml"
   workflow_dispatch:
@@ -62,3 +66,42 @@ jobs:
       - name: Desmontar laboratorio
         if: always()
         run: docker compose -f tests/integration/syncthing-compose.yml down -v --remove-orphans || true
+
+  hub-worker-lab:
+    # Syncthing real (pc1 ↔ hub ↔ pc2) + observador Server Oficina sobre la
+    # carpeta del hub: versiones, tombstones, RECOVERED, conflictos y SHA-256.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SYNCTHING_VERSION: v2.1.5
+      # sha256sum.txt.asc publicado en la release oficial v2.1.5
+      SYNCTHING_SHA256: 3d222b609f7ab2944e02748cb10488b4160d446b49e0eafc107ef2a525ab3486
+      LAB_ROOT: ${{ github.workspace }}/runtime/hub-worker-lab
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: python -m pip install -r requirements.txt
+
+      - name: Descargar Syncthing verificado
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/syncthing.tgz" \
+            "https://github.com/syncthing/syncthing/releases/download/${SYNCTHING_VERSION}/syncthing-linux-amd64-${SYNCTHING_VERSION}.tar.gz"
+          echo "${SYNCTHING_SHA256}  $RUNNER_TEMP/syncthing.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/syncthing.tgz" -C "$RUNNER_TEMP"
+          echo "SYNCTHING_BIN=$RUNNER_TEMP/syncthing-linux-amd64-${SYNCTHING_VERSION}/syncthing" >> "$GITHUB_ENV"
+
+      - name: Syncthing real + observador Server Oficina
+        run: python tests/integration/hub_worker_lab.py
+
+      - name: Evidencia
+        if: always()
+        run: |
+          cat "$LAB_ROOT/evidence.json" || true
+          tail -n 80 "$LAB_ROOT/worker.log" || true
