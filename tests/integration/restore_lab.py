@@ -66,6 +66,13 @@ def psql(sql: str, db: str = "server_oficina", check: bool = True) -> str:
               "-v", "ON_ERROR_STOP=1", "-Atq", "-c", sql, check=check).stdout.strip()
 
 
+def ensure_service_user():
+    """Como en la Latitude (lo crea el instalador): dueño de data/app restaurado."""
+    if subprocess.run(["id", "serveroficina"], capture_output=True).returncode != 0:
+        sh("useradd", "--system", "--user-group", "--no-create-home", "--shell", "/usr/sbin/nologin", "serveroficina")
+        EVIDENCE["usuario_serveroficina"] = "creado por el laboratorio"
+
+
 def start_cluster():
     shutil.chown(PGROOT, "postgres", "postgres")
     PGSOCK.mkdir()
@@ -254,6 +261,7 @@ def main() -> int:
     for path in [STATE, *NS.values()]:
         path.mkdir(parents=True)
     write_stubs()
+    ensure_service_user()
     start_cluster()
     try:
         return scenarios()

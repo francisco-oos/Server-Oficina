@@ -235,6 +235,8 @@ def test_restore_never_leaves_a_partial_live_database():
     assert "sha256sum --quiet --strict -c SHA256SUMS" in code
     assert "pg_restore -f /dev/null < database.dump" in code
     assert "tar -tzf app-files.tar.gz" in code
+    # Precondiciones del host comprobadas antes de crear nada (sin usuario: salida 20, no 21).
+    assert code.index("id serveroficina") < code.index("PHASE=preparacion")
     # Restauración atómica en una base nueva; nunca --clean sobre la viva.
     assert "--clean" not in code
     assert re.search(r'pg_restore -U serveroficina -d "\$STAGE_DB" --single-transaction --exit-on-error', code)

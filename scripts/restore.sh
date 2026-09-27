@@ -185,6 +185,7 @@ fi
 sha256sum --quiet --strict -c SHA256SUMS || finish 20 RESTORE_FAIL "SHA256SUMS no coincide: respaldo dañado o alterado"
 pgsql -c "SELECT 1" >/dev/null || finish 20 RESTORE_FAIL "PostgreSQL ($PG) no responde"
 db_exists "$DB" || finish 20 RESTORE_FAIL "no existe la base $DB; instale Server Oficina antes de restaurar"
+id serveroficina >/dev/null 2>&1 || finish 20 RESTORE_FAIL "no existe el usuario serveroficina; instale Server Oficina antes de restaurar"
 for name in "$STAGE_DB" "$PREV_DB"; do
   ! db_exists "$name" || finish 20 RESTORE_FAIL "ya existe la base $name; reintente en un segundo"
 done
