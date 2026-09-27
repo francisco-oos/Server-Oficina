@@ -17,6 +17,7 @@ la versión se registra igual con ``method="none"`` y la causa.
 import re
 from datetime import datetime
 from typing import Any, Callable, Protocol
+from urllib.error import HTTPError
 
 from app.services.file_watcher import FileObservation
 
@@ -63,12 +64,25 @@ class SyncthingAttributor:
             return {"method": "none", "scope": "DEVICE", "person": None, "reason": self.disabled_reason}
         try:
             info = self.client.file_info(folder=self.folder_id, relative_path=observation.disk_path) or {}
+        except HTTPError as exc:
+            if exc.code == 404:
+                # Syncthing aún no indexó este archivo (p. ej. escrito en el hub):
+                # la API funciona; sólo esta atribución queda sin verificar.
+                return {"method": "syncthing_modified_by", "scope": "DEVICE", "person": None,
+                        "verified": False, "reason": "archivo aún no indexado por Syncthing"}
+            return self._disable(exc)
         except Exception as exc:  # noqa: BLE001 - la atribución nunca bloquea la ingesta
-            # Un fallo de la API no se reintenta archivo por archivo en esta pasada.
-            self.disabled_reason = f"API Syncthing no disponible: {exc.__class__.__name__}"
-            if self.log:
-                self.log(f"LOCAL_CLOUD_ATTRIBUTION_UNAVAILABLE folder={self.folder_id} reason={self.disabled_reason}")
-            return {"method": "none", "scope": "DEVICE", "person": None, "reason": self.disabled_reason}
+            return self._disable(exc)
+        return self._describe(observation, info)
+
+    def _disable(self, exc: Exception) -> dict[str, Any]:
+        # Un fallo de la API no se reintenta archivo por archivo en esta pasada.
+        self.disabled_reason = f"API Syncthing no disponible: {exc.__class__.__name__}"
+        if self.log:
+            self.log(f"LOCAL_CLOUD_ATTRIBUTION_UNAVAILABLE folder={self.folder_id} reason={self.disabled_reason}")
+        return {"method": "none", "scope": "DEVICE", "person": None, "reason": self.disabled_reason}
+
+    def _describe(self, observation: FileObservation, info: dict) -> dict[str, Any]:
         entry = info.get("local") or info.get("global") or {}
         short = (entry.get("modifiedBy") or "").upper() or None
         size_ok = entry.get("size") == observation.size_bytes

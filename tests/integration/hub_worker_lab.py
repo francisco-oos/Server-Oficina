@@ -179,10 +179,13 @@ def so_env() -> dict[str, str]:
         "SERVER_OFICINA_DATA_DIR": str(ROOT / "hub" / "data"),
         "SERVER_OFICINA_SYNC_ROOT": str(HUB_FILES),
         "SERVER_OFICINA_VERSIONS_ROOT": str(VERSIONS),
+        # Atribución técnica de dispositivo vía la API real del Syncthing del hub.
+        "SERVER_OFICINA_SYNCTHING_API": f"http://127.0.0.1:{NODES['hub']['gui']}",
+        "SERVER_OFICINA_SYNCTHING_API_KEY": API_KEY,
     }
 
 
-def prepare_server_oficina():
+def prepare_server_oficina(ids: dict[str, str]):
     code = f"""
 from app.db.base import Base, SessionLocal, engine
 from app.db import models as _models  # noqa: F401 -- mismo esquema que app.main
@@ -191,6 +194,10 @@ Base.metadata.create_all(bind=engine)
 with SessionLocal() as db:
     db.add(m.SyncShare(code="LAB_SYNC", name="LAB", owner_area_code="LAB",
                        local_root={str(HUB_SHARE)!r}, syncthing_folder_id={FOLDER!r}))
+    db.add(m.SyncPeer(code="LAB-PC1", display_name="PC1 laboratorio", platform="linux-lab",
+                      syncthing_device_id={ids["pc1"]!r}))
+    db.add(m.SyncPeer(code="LAB-PC2", display_name="PC2 laboratorio", platform="linux-lab",
+                      syncthing_device_id={ids["pc2"]!r}))
     db.commit()
 """
     subprocess.run([sys.executable, "-c", code], check=True, env=so_env(), cwd=REPO)
@@ -407,6 +414,8 @@ def run():
          cuarentena=not rows("SELECT 1 FROM document_records WHERE lower(logical_path) = 'radio.txt'"),
          worker_vivo=PROCS["worker"].poll() is None)
 
+    extended_scenarios()
+
     for path in sorted(p for p in HUB_SHARE.rglob("*") if p.is_file() and ".stversions" not in p.parts
                        and ".stfolder" not in p.parts):
         rel = path.relative_to(HUB_SHARE).as_posix()
@@ -415,6 +424,95 @@ def run():
     EVIDENCE["hub_syncthing_usage"] = proc_usage(PROCS["hub"].pid)
     EVIDENCE["versions_bytes"] = sum(p.stat().st_size for p in VERSIONS.rglob("*") if p.is_file())
     EVIDENCE["worker_log_tail"] = (ROOT / "worker.log").read_text(errors="replace").splitlines()[-15:]
+
+
+def attribution(path: str) -> dict:
+    found = rows(
+        "SELECT v.metadata_json FROM document_versions v JOIN document_records d ON d.id = v.document_id "
+        "WHERE d.logical_path = ? ORDER BY v.observed_at DESC LIMIT 1", path)
+    return (json.loads(found[0][0]) if found else {}).get("attribution", {})
+
+
+def observer_status() -> dict:
+    meta = rows("SELECT metadata_json FROM sync_shares WHERE code = 'LAB_SYNC'")[0][0]
+    return json.loads(meta or "{}").get("observer", {})
+
+
+def deleted_count() -> int:
+    return rows("SELECT count(*) FROM document_versions WHERE change_kind = 'DELETED'")[0][0]
+
+
+def extended_scenarios():
+    # Atribución técnica de dispositivo (Syncthing modifiedBy): sin persona.
+    from_pc2 = b"escrito en pc2\n"
+    write("pc2", "Desde_pc2.txt", from_pc2)
+    wait_versions("Desde_pc2.txt", [("MODIFIED", sha(from_pc2))])
+    first = attribution("Inventario_LAB.xlsx")
+    second = attribution("Desde_pc2.txt")
+    step("atribucion_dispositivo", pc1=first, pc2=second)
+    assert first.get("peer_code") == "LAB-PC1" and first.get("verified") is True, first
+    assert second.get("peer_code") == "LAB-PC2" and second.get("verified") is True, second
+    assert first.get("person") is None and first.get("scope") == "DEVICE"
+
+    # Cambios rápidos: el registro converge al contenido final sin versiones inconsistentes.
+    final = None
+    for i in range(20):
+        final = f"version rapida {i}\n".encode() * (i + 1)
+        write("pc1", "Rapido.txt", final)
+    wait_file("hub", "Rapido.txt", final)
+    wait_until("última versión de Rapido.txt registrada",
+               lambda: versions("Rapido.txt") and versions("Rapido.txt")[-1][1] == sha(final), timeout=60)
+    consistent = all(
+        (VERSIONS / "sha256" / d[:2] / d).stat().st_size == size
+        for d, size in rows("SELECT v.sha256, v.size_bytes FROM document_versions v JOIN document_records r "
+                            "ON r.id = v.document_id WHERE r.logical_path = 'Rapido.txt'")
+    )
+    step("cambios_rapidos", escrituras=20, versiones_registradas=len(versions("Rapido.txt")),
+         tamano_coherente_con_objeto=consistent)
+    assert consistent
+
+    # Archivo que genera error (nombre no portable a Windows): se aísla y queda como evidencia.
+    write("pc1", "Reporte:final.txt", b"dos puntos no valen en Windows")
+    wait_file("hub", "Reporte:final.txt", b"dos puntos no valen en Windows")
+    probe = b"el observador sigue\n"
+    write("pc1", "Tras_error.txt", probe)
+    wait_versions("Tras_error.txt", [("MODIFIED", sha(probe))])
+    issues = observer_status().get("issues", [])
+    step("archivo_con_error", incidencias=[i for i in issues if "Reporte" in i["path"]],
+         worker_vivo=PROCS["worker"].poll() is None)
+    assert any(i["code"] == "NAME_NOT_PORTABLE" and "Reporte" in i["path"] for i in issues), issues
+
+    # Caída de la raíz del hub (punto de montaje vacío) y recuperación.
+    before = deleted_count()
+    pc1_files = sorted(p.name for p in folder_path("pc1").iterdir() if p.is_file())
+    offline = HUB_SHARE.with_name("LAB_SYNC.desmontado")
+    HUB_SHARE.rename(offline)
+    HUB_SHARE.mkdir()
+    wait_until("observador UNAVAILABLE",
+               lambda: observer_status().get("code") == "SYNCTHING_MARKER_MISSING", timeout=30)
+    during = b"creado durante la caida del hub\n"
+    write("pc1", "Durante_caida.txt", during)
+    time.sleep(8)
+    step("caida_raiz", estado=observer_status().get("state"), codigo=observer_status().get("code"),
+         borrados_nuevos=deleted_count() - before, worker_vivo=PROCS["worker"].poll() is None)
+    assert deleted_count() == before, "falsos borrados durante la caída"
+    HUB_SHARE.rmdir()
+    offline.rename(HUB_SHARE)
+    request("hub", "PATCH", f"/rest/config/folders/{FOLDER}", payload={"paused": True})
+    request("hub", "PATCH", f"/rest/config/folders/{FOLDER}", payload={"paused": False})
+    wait_file("hub", "Durante_caida.txt", during)
+    wait_versions("Durante_caida.txt", [("MODIFIED", sha(during))])
+    wait_until("observador AVAILABLE", lambda: observer_status().get("state") == "AVAILABLE", timeout=30)
+    pc1_after = sorted(p.name for p in folder_path("pc1").iterdir() if p.is_file())
+    step("recuperacion_raiz", borrados_nuevos=deleted_count() - before,
+         pc1_sin_perdidas=set(pc1_files) <= set(pc1_after))
+    assert deleted_count() == before and set(pc1_files) <= set(pc1_after)
+
+    # Consistencia final DB <-> versions/ con SHA recalculado.
+    verify = subprocess.run([sys.executable, "-m", "app.workers.verify_history", "--deep"],
+                            env=so_env(), cwd=REPO, capture_output=True, text=True)
+    step("verify_history_deep", salida=verify.stdout.strip().splitlines()[0], exit=verify.returncode)
+    assert verify.returncode == 0, verify.stdout
 
 
 def main() -> int:
@@ -432,8 +530,8 @@ def main() -> int:
     try:
         for node in NODES:
             start(node)
-        configure()
-        prepare_server_oficina()
+        ids = configure()
+        prepare_server_oficina(ids)
         start_worker()
         run()
         EVIDENCE["result"] = "HUB_WORKER_LAB_OK"

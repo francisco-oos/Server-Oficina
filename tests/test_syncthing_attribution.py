@@ -116,3 +116,30 @@ def test_unknown_device_keeps_short_id_without_inventing_a_peer(tmp_path: Path, 
     assert version.source_peer_id is None
     assert version.metadata_json["attribution"]["device_short_id"] == "ZZZZZZZ"
     assert version.metadata_json["attribution"]["peer_code"] is None
+
+
+def test_file_not_yet_indexed_by_syncthing_does_not_disable_attribution(tmp_path: Path, db):
+    from urllib.error import HTTPError
+
+    root, target, share, peer = _setup(db, tmp_path, "nuevo.txt", b"n")
+    (root / "otro.txt").write_bytes(b"o")
+    short = short_device_id(peer.syncthing_device_id)
+
+    class PartlyIndexed(FakeSyncthing):
+        def file_info(self, *, folder, relative_path):
+            self.calls += 1
+            if relative_path == "nuevo.txt":
+                raise HTTPError("http://127.0.0.1:8384/rest/db/file", 404, "Not Found", {}, None)
+            return {"local": _entry(root / relative_path, short)}
+
+    client = PartlyIndexed()
+    attributor = SyncthingAttributor(client, folder_id=share.syncthing_folder_id,
+                                     peers_by_short_id={short: (peer.id, peer.code)})
+    scan_share(db, share=share, previous=None, content_store=ContentStore(tmp_path / "v"),
+               settle_seconds=0, log=lambda _m: None, attribute=attributor)
+
+    assert client.calls == 2 and attributor.disabled_reason is None
+    by_path = dict(db.execute(select(DocumentRecord.logical_path, DocumentVersion.metadata_json)
+                              .join(DocumentVersion).where(DocumentRecord.share_id == share.id)).all())
+    assert by_path["nuevo.txt"]["attribution"]["verified"] is False
+    assert by_path["otro.txt"]["attribution"]["verified"] is True
