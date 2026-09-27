@@ -1,11 +1,12 @@
 [Unit]
-Description=Server Oficina - reglas UFW de la red LAN confiable
+Description=Server Oficina - reglas UFW de las LAN confiables (Ethernet y Wi-Fi)
 Documentation=file:/opt/server-oficina/current/docs/arquitectura/53_FASE_1_SINCRONIZACION_OBSERVADOR.md
 After=network-online.target ufw.service
 
 [Service]
 Type=oneshot
 # python3 del sistema (sólo biblioteca estándar): funciona aunque el venv falle.
-ExecStart=/usr/bin/python3 /opt/server-oficina/current/scripts/lan_firewall.py apply
+# --sync-api: 0.0.0.0 mientras quede alguna LAN confiable publicada, 127.0.0.1 si ninguna.
+ExecStart=/usr/bin/python3 /opt/server-oficina/current/scripts/lan_firewall.py apply --sync-api
 NoNewPrivileges=true
 PrivateTmp=true

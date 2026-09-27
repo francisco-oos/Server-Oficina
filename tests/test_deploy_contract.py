@@ -254,3 +254,24 @@ def test_restore_never_leaves_a_partial_live_database():
         assert code_status in code
     assert code.index("start_services || revert") < code.index("finish 0 RESTORE_OK")
     assert "trap on_exit EXIT" in code
+
+
+def test_lan_is_multi_interface_and_the_latitude_never_routes():
+    """Ethernet + Wi-Fi a la vez: publicar en cada LAN confiable sin convertir la Latitude en router."""
+    lan_dir = ROOT / "deploy" / "lan-firewall"
+    dispatcher = (lan_dir / "90-server-oficina-lan").read_text(encoding="utf-8")
+    assert re.search(r"^\s*up\|down\|dhcp4-change\|", dispatcher, re.M)  # una LAN que cae pierde sus reglas ya
+    assert _unit_directives("lan-firewall/server-oficina-lan-firewall.service", "ExecStart")[-2:] == [
+        "apply", "--sync-api"]
+    configure = (ROOT / "scripts" / "configurar-acceso-lan.sh").read_text(encoding="utf-8")
+    assert "--confiar-interfaz" in configure and "--confiar-interfaz" in INSTALLER
+    assert "flock -w" in configure and "export SO_LAN_FIREWALL_LOCK_HELD=1" in configure
+    # La intención de publicar se registra sólo tras demostrar reglas, y se retira en cualquier fallo.
+    assert configure.index("apply --require-rules") < configure.index("api on") < configure.index("set_host 0.0.0.0")
+    assert "api off" in configure.split("local_only() {", 1)[1].split("\n}\n", 1)[0]
+    # Ningún script habilita forwarding, NAT, bridge o reflector mDNS entre las LAN.
+    forbidden = re.compile(r"sysctl\s+-w|ip_forward\s*=\s*1|-j\s+MASQUERADE|ip\s+link\s+add|brctl\s+addbr|"
+                           r"enable-reflector\s*=\s*yes|DEFAULT_FORWARD_POLICY=\"?ACCEPT")
+    for script in [*(ROOT / "scripts").glob("*.sh"), *ROOT.glob("*.sh"), lan_dir / "90-server-oficina-lan"]:
+        code = "\n".join(l for l in script.read_text(encoding="utf-8").splitlines() if not l.lstrip().startswith("#"))
+        assert not forbidden.search(code), script.name

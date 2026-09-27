@@ -1,7 +1,9 @@
 #!/bin/sh
-# NetworkManager dispatcher: al cambiar de red/DHCP, recalcular reglas LAN.
+# NetworkManager dispatcher: al subir, caer o renovar DHCP CUALQUIER interfaz
+# (Ethernet o Wi-Fi), recalcular las reglas de cada LAN. Una LAN que cae pierde
+# sólo sus reglas; las demás no se tocan (reconciliación incremental).
 case "$2" in
-  up|dhcp4-change|connectivity-change)
+  up|down|dhcp4-change|connectivity-change|reapply)
     systemctl start --no-block server-oficina-lan-firewall.service ;;
 esac
 exit 0

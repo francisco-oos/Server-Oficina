@@ -29,13 +29,29 @@ run() {
   echo "SERVER OFICINA · EVIDENCIA $LABEL · $(date -Is)"
   echo "operador=$OWNER candidata=$SRC"
   echo
-  echo "== Identidad y red =="
+  echo "== Identidad y red (Ethernet + Wi-Fi pueden estar activas a la vez) =="
   run hostname
   run hostname -I
-  run ip -br a
+  run ip -br addr
+  run ip -br link
   run ip -4 route
-  run "getent hosts server-oficina.local || echo 'server-oficina.local NO resuelve'"
+  run "ip -4 route show default"
+  run "for i in /sys/class/net/*; do n=\${i##*/}; printf '%-16s device=%s wireless=%s master=%s oper=%s\n' \"\$n\" \"\$([[ -e \$i/device ]] && echo si || echo no)\" \"\$([[ -e \$i/wireless || -e \$i/phy80211 ]] && echo si || echo no)\" \"\$([[ -e \$i/master ]] && basename \"\$(readlink -f \$i/master)\" || echo -)\" \"\$(cat \$i/operstate)\"; done"
+  run "ip -4 neigh show"
+  run "nmcli -t -f DEVICE,TYPE,STATE,CONNECTION dev 2>/dev/null || echo 'nmcli no disponible'"
+  run "nmcli -t -f DEVICE,UUID,NAME connection show --active 2>/dev/null || true"
+  run "iw dev 2>/dev/null | grep -E 'Interface|ssid' || true"
+  echo; echo "== Descubrimiento local (mDNS/Avahi) y no-enrutamiento =="
+  run "getent hosts server-oficina.local || echo 'server-oficina.local NO resuelve (desde la propia Latitude)'"
   run "systemctl is-active avahi-daemon || true"
+  run "grep -Ev '^[[:space:]]*(#|;|$)' /etc/avahi/avahi-daemon.conf 2>/dev/null || echo 'sin /etc/avahi/avahi-daemon.conf'"
+  run "journalctl -u avahi-daemon -n 30 --no-pager 2>/dev/null | grep -Ei 'registering|conflict|joining|server startup' || true"
+  run "sysctl net.ipv4.ip_forward"
+  run "iptables -S FORWARD 2>/dev/null | head -3 || true"
+  run "grep -E '^DEFAULT_FORWARD_POLICY' /etc/default/ufw 2>/dev/null || true"
+  run "grep -n '224.0.0.251' /etc/ufw/before.rules 2>/dev/null || echo 'before.rules sin regla mDNS genérica'"
+  run "ip -d link show type bridge 2>/dev/null || true"
+  run "python3 $CURRENT/scripts/lan_firewall.py audit 2>/dev/null || python3 $SRC/scripts/lan_firewall.py audit 2>/dev/null || echo 'auditoría LAN no disponible'"
   run timedatectl
 
   echo; echo "== Release activa vs candidata =="
@@ -114,8 +130,6 @@ run() {
   run "ufw status numbered"
   run "python3 $CURRENT/scripts/lan_firewall.py status 2>/dev/null || echo 'reconciliador LAN no disponible en la release activa'"
   run "systemctl status server-oficina-lan-firewall.timer --no-pager 2>/dev/null | head -8 || true"
-  run "iw dev 2>/dev/null | grep -E 'Interface|ssid' || true"
-  run "nmcli -t -f DEVICE,TYPE,STATE,CONNECTION dev 2>/dev/null || echo 'nmcli no disponible'"
 } > "$OUT"
 
 chown "$OWNER": "$OUTDIR" "$OUT" 2>/dev/null || true

@@ -59,14 +59,16 @@ if args[:1] == ["status"]:
         print(f"Default: {os.environ.get('LAB_UFW_DEFAULT', 'deny')} (incoming), allow (outgoing), disabled (routed)")
     if args[1:] == ["numbered"]:
         for i, r in enumerate(state["rules"], 1):
-            print(f"[{i:2d}] {r['spec']}   # {r['comment']}")
+            a = r.get("args")
+            to, frm = (f"{a[8]}/{a[10]} on {a[2]}", a[4]) if a else r["spec"].split(" ALLOW IN ")
+            print(f"[{i:2d}] {to:<26} ALLOW IN    {frm:<26} # {r['comment']}")
 elif args[:2] == ["--force", "delete"]:
     del state["rules"][int(args[2]) - 1]; save()
 elif args[:1] == ["allow"]:
     if os.environ.get("LAB_UFW_FAIL_ALLOW") == "1":
         print("ERROR: fallo simulado del reconciliador", file=sys.stderr); sys.exit(1)
-    spec, comment = " ".join(args[1:args.index("comment")]), args[args.index("comment") + 1]
-    state["rules"].append({"spec": spec, "comment": comment}); save()
+    rule_args, comment = args[1:args.index("comment")], args[args.index("comment") + 1]
+    state["rules"].append({"spec": " ".join(rule_args), "args": rule_args, "comment": comment}); save()
 else:
     sys.exit(2)
 STUB
@@ -75,14 +77,19 @@ STUB
 IP_STUB = r"""
 exec python3 - "$@" <<'STUB'
 import json, os, sys
-n = json.load(open(os.path.join(os.environ["LAB_STATE"], "net.json")))
+ifaces = json.load(open(os.path.join(os.environ["LAB_STATE"], "net.json")))["ifaces"]
 args = sys.argv[1:]
 if "neigh" in args:
-    print(f"{n['gw']} lladdr {n['gw_mac']} REACHABLE")
+    gw, dev = args[args.index("show") + 1], args[args.index("dev") + 1]
+    for i in ifaces:
+        if i["name"] == dev and i["gw"] == gw:
+            print(f"{gw} lladdr {i['gw_mac']} REACHABLE")
+elif "addr" in args:
+    for idx, i in enumerate(ifaces, 2):
+        print(f"{idx}: {i['name']}    inet {i['ip']} brd 0.0.0.0 scope global dynamic {i['name']}")
 elif "default" in args:
-    print(f"default via {n['gw']} dev {n['iface']} proto dhcp metric 100")
-else:
-    print(f"{n['subnet']} proto kernel scope link src {n['ip']} metric 100")
+    for i in ifaces:
+        print(f"default via {i['gw']} dev {i['name']} proto dhcp metric {100 if i['kind'] == 'wired' else 600}")
 STUB
 """
 
@@ -96,6 +103,11 @@ STUBS = {
     # UFW con estado: LAB_UFW=active|inactive, LAB_UFW_DEFAULT=deny|allow, LAB_UFW_FAIL_ALLOW=1.
     "ufw": UFW_STUB,
     "ip": IP_STUB,
+    "iw": (
+        'python3 -c \'import json, os, sys; n = json.load(open(os.environ["LAB_STATE"] + "/net.json")); '
+        'i = [i for i in n["ifaces"] if i["name"] == sys.argv[1]]; '
+        'print("SSID: " + i[0]["ssid"] if i and i[0].get("ssid") else "Not connected.")\' "$2"\n'
+    ),
     "date": (
         'if [[ "${1:-}" == "+%Y%m%d-%H%M%S" && -n "${LAB_STAMP:-}" ]]; then echo "$LAB_STAMP"; exit 0; fi\n'
         'exec /bin/date "$@"\n'
@@ -138,6 +150,7 @@ case "${1:-}" in
   enable) shift; [[ "${1:-}" == --now ]] && shift; for u in "$@"; do echo enabled > "$LAB_STATE/$u.enabled"; [[ $now == 1 ]] && start "$u"; done; exit 0 ;;
   disable) shift; [[ "${1:-}" == --now ]] && shift; for u in "$@"; do rm -f "$LAB_STATE/$u.enabled"; [[ $now == 1 ]] && echo inactive > "$LAB_STATE/$u.active"; done; exit 0 ;;
   restart|start) start "$2"; exit 0 ;;
+  try-restart) u="${2%.service}"; [[ "$(cat "$LAB_STATE/$u.active" 2>/dev/null)" == active ]] && start "$u"; exit 0 ;;
   is-enabled) if [[ -f "$LAB_STATE/$2.enabled" ]]; then echo enabled; exit 0; fi; echo disabled; exit 1 ;;
   is-active) u="${!#}"; s=$(cat "$LAB_STATE/$u.active" 2>/dev/null || echo inactive); [[ "$2" == --quiet ]] || echo "$s"; [[ $s == active ]] ;;
   show)
@@ -209,7 +222,9 @@ def run_in_ns(command: str, name: str, *, pre: str = "", **env_extra) -> subproc
     mounts = "\n".join(f'mkdir -p "{ns}" && mount --bind "{real}" "{ns}"' for ns, real in NS.items())
     script = f"set -e\n{mounts}\n{pre}\n{command}\n"
     env = {k: v for k, v in os.environ.items() if k not in {"SUDO_USER", "SUDO_UID", "SUDO_GID"}}
-    env.update({"PATH": f"{BIN}:{os.environ['PATH']}", "LAB_STATE": str(STATE), **env_extra})
+    env.update({"PATH": f"{BIN}:{os.environ['PATH']}", "LAB_STATE": str(STATE),
+                # Interfaces simuladas (Ethernet/Wi-Fi) para el reconciliador LAN.
+                "SO_LAN_FIREWALL_SYSFS": str(LAB / "sysfs"), **env_extra})
     result = subprocess.run(
         ["unshare", "--mount", "--propagation", "private", "bash", "-c", script],
         env=env, text=True, capture_output=True, timeout=1800,
@@ -253,10 +268,24 @@ def managed_rules() -> list[str]:
     return [r["spec"] for r in rules if r["comment"] == "server-oficina-lan"]
 
 
-def set_network(**values):
-    base = {"iface": "eth0", "gw": "192.168.48.1", "ip": "192.168.48.109",
-            "subnet": "192.168.48.0/24", "gw_mac": "aa:bb:cc:00:00:01"}
-    (STATE / "net.json").write_text(json.dumps({**base, **values}))
+ETH_LAN = {"name": "eth0", "kind": "wired", "gw": "192.168.48.1", "ip": "192.168.48.109/24",
+           "gw_mac": "aa:bb:cc:00:00:01"}
+WIFI_LAN = {"name": "wlan0", "kind": "wifi", "gw": "10.20.0.1", "ip": "10.20.0.57/24",
+            "gw_mac": "aa:bb:cc:00:00:02", "ssid": "Oficina-B"}
+
+
+def set_network(*ifaces: dict, **values):
+    """LAN activas de la Latitude simulada. Sin argumentos: sólo eth0 (con ``values`` aplicados)."""
+    ifaces = ifaces or ({**ETH_LAN, **values},)
+    sysfs = LAB / "sysfs"
+    shutil.rmtree(sysfs, ignore_errors=True)
+    for i in ifaces:
+        (sysfs / i["name"] / "device").mkdir(parents=True)
+        (sysfs / i["name"] / "type").write_text("1\n")
+        (sysfs / i["name"] / "operstate").write_text("up\n")
+        if i["kind"] == "wifi":
+            (sysfs / i["name"] / "wireless").mkdir()
+    (STATE / "net.json").write_text(json.dumps({"ifaces": list(ifaces)}))
 
 
 def lan_fail_closed(src: Path) -> str:
@@ -301,6 +330,53 @@ def lan_fail_closed(src: Path) -> str:
           f"exit={r.returncode} host={env_host()} {managed_rules()}")
     record("misma_interfaz_otra_red_despublica", r, host=env_host(), reglas_lan=managed_rules())
     return current_release()
+
+
+def multi_lan(src: Path):
+    """Ethernet + Wi-Fi activas a la vez: cada LAN se confía y se publica por separado."""
+    configure = "exec /opt/server-oficina/current/scripts/configurar-acceso-lan.sh"
+    reconcile = "exec python3 /opt/server-oficina/current/scripts/lan_firewall.py apply --sync-api"
+    set_network(ETH_LAN, WIFI_LAN)
+    both = ["in on eth0 from 192.168.48.0/24 to any port 8080 proto tcp",
+            "in on wlan0 from 10.20.0.0/24 to any port 8080 proto tcp"]
+
+    r = run_in_ns(f"{configure} --confiar-red-actual", "s2f_dos_lan_confiar_ambiguo", LAB_UFW="active")
+    check("s2f ambiguo", r.returncode == 10 and "varias LAN activas" in r.stderr and env_host() == "127.0.0.1",
+          f"exit={r.returncode} {r.stderr[-600:]}")
+    check("s2f sin confiar la Wi-Fi", not any("wlan0" in rule for rule in managed_rules()), str(managed_rules()))
+    record("dos_lan_confiar_red_actual_es_ambiguo", r, host=env_host(), reglas_lan=managed_rules())
+
+    r = run_in_ns(f"{configure} --confiar-interfaz eth0 --confiar-interfaz wlan0", "s2f_dos_lan_publicadas",
+                  LAB_UFW="active")
+    check("s2f publicadas", r.returncode == 0 and env_host() == "0.0.0.0" and sorted(managed_rules()) == both,
+          f"exit={r.returncode} host={env_host()} {managed_rules()} {r.stderr[-600:]}")
+    check("s2f URLs por LAN", "http://192.168.48.109:8080" in r.stdout and "http://10.20.0.57:8080" in r.stdout,
+          r.stdout[-800:])
+    record("ethernet_y_wifi_publicadas", r, host=env_host(), reglas_lan=managed_rules())
+
+    (STATE / "systemctl.log").write_text("")
+    set_network(ETH_LAN)  # cae la Wi-Fi
+    r = run_in_ns(reconcile, "s2g_cae_wifi", LAB_UFW="active")
+    log = (STATE / "systemctl.log").read_text()
+    check("s2g", r.returncode == 0 and env_host() == "0.0.0.0" and managed_rules() == [both[0]]
+          and "try-restart" not in log, f"host={env_host()} {managed_rules()} {log}")
+    record("cae_wifi_ethernet_sigue_sin_reiniciar_api", r, host=env_host(), reglas_lan=managed_rules())
+
+    set_network(WIFI_LAN)  # vuelve la Wi-Fi y cae el cable
+    run_in_ns(reconcile, "s2g_cae_ethernet", LAB_UFW="active")
+    check("s2g cable", env_host() == "0.0.0.0" and managed_rules() == [both[1]], str(managed_rules()))
+
+    set_network(dict(WIFI_LAN, gw_mac="aa:bb:cc:99:99:99"))  # sólo queda una LAN desconocida
+    r = run_in_ns(reconcile, "s2h_ninguna_lan_confiable", LAB_UFW="active")
+    log = (STATE / "systemctl.log").read_text()
+    check("s2h", env_host() == "127.0.0.1" and managed_rules() == [] and "try-restart server-oficina" in log,
+          f"host={env_host()} {managed_rules()} {log}")
+    record("ninguna_lan_confiable_api_loopback", r, host=env_host(), reglas_lan=managed_rules())
+
+    set_network(ETH_LAN, WIFI_LAN)  # vuelven ambas
+    r = run_in_ns(reconcile, "s2h_vuelven_ambas", LAB_UFW="active")
+    check("s2h vuelven", env_host() == "0.0.0.0" and sorted(managed_rules()) == both, str(managed_rules()))
+    record("vuelven_ambas_lan", r, host=env_host(), reglas_lan=sorted(managed_rules()))
 
 
 def reset_state():
@@ -439,6 +515,7 @@ def main() -> int:
            env_operador_conservado=True)
 
     second = lan_fail_closed(src)
+    multi_lan(src)
 
     # 3 · colisión forzada: mismo instante => directorio existente => no se toca nada
     stamp = second.rsplit("+", 1)[1].split(".", 1)[0]
