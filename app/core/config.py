@@ -20,6 +20,9 @@ class Settings:
     syncthing_api_key: str
     workstation_session_days: int
     workstation_online_minutes: int
+    #: Porcentaje del volumen de versions/ que el observador nunca ocupa
+    #: (en la Latitude lo comparte con PostgreSQL).
+    versions_min_free_percent: float = 10.0
 
 
 def load_settings() -> Settings:
@@ -50,4 +53,5 @@ def load_settings() -> Settings:
         syncthing_api_key=os.getenv("SERVER_OFICINA_SYNCTHING_API_KEY", ""),
         workstation_session_days=int(os.getenv("SERVER_OFICINA_WORKSTATION_SESSION_DAYS", "15")),
         workstation_online_minutes=int(os.getenv("SERVER_OFICINA_WORKSTATION_ONLINE_MINUTES", "5")),
+        versions_min_free_percent=float(os.getenv("SERVER_OFICINA_VERSIONS_MIN_FREE_PERCENT", "10")),
     )

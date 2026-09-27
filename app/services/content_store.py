@@ -40,8 +40,41 @@ def sha256_file(path: Path, *, chunk_size: int = 4 * 1024 * 1024) -> str:
 
 
 class ContentStore:
-    def __init__(self, root: Path):
+    """Almacén inmutable direccionado por SHA-256.
+
+    ``min_free_percent`` reserva espacio del filesystem de ``versions/``: en la
+    Latitude comparte volumen con PostgreSQL y un disco lleno detendría la base.
+    Con headroom insuficiente el observador pausa el archivado y lo reintenta.
+    """
+
+    def __init__(self, root: Path, *, min_free_percent: float = 0.0):
         self.root = root.resolve()
+        self.min_free_percent = max(0.0, float(min_free_percent))
+
+    def headroom_bytes(self) -> int:
+        """Bytes que aún pueden escribirse sin invadir la reserva."""
+        probe = self.root
+        while not probe.exists() and probe != probe.parent:
+            probe = probe.parent
+        usage = shutil.disk_usage(probe)
+        reserve = int(usage.total * self.min_free_percent / 100)
+        return usage.free - reserve
+
+    def remove_orphan_partials(self) -> int:
+        """Borra temporales de copias interrumpidas (SIGKILL, corte de energía).
+
+        Sólo es seguro con un único escritor: el observador llama a esto al
+        arrancar, antes de archivar nada. Nunca toca objetos ``sha256/xx/<hash>``.
+        """
+        removed = 0
+        base = self.root / "sha256"
+        if not base.is_dir():
+            return 0
+        for temp in base.glob("*/.partial-*"):
+            if temp.is_file() and not temp.is_symlink():
+                temp.unlink(missing_ok=True)
+                removed += 1
+        return removed
 
     def relative_path_for(self, sha256: str) -> str:
         digest = _validate_sha256(sha256)
