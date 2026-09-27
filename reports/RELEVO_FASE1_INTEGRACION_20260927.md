@@ -383,3 +383,243 @@ El commit de este reporte sólo añade texto y MANIFEST; su CI se consigna en el
 
 Laboratorio verde ≠ hardware validado. El siguiente paso sigue siendo §13: revisión
 independiente y, después, el runbook 52 en `server-oficina`.
+
+## 15 · Multi-interfaz / multi-LAN: Ethernet + Wi-Fi a la vez (mismo PR #3)
+
+### 15.1 · Requisito aclarado y limitación que tenía `0f49c8e`
+
+La Latitude tendrá Ethernet y Wi-Fi activas **simultáneamente**, cada una en una
+LAN de la oficina, y debe poder encontrarse y usarse desde cualquiera de las dos.
+En `0f49c8e`, `detect_network()` leía `ip route show default`, elegía **una**
+interfaz y `desired_rules()` sólo generaba reglas para ella: con cable y Wi-Fi a
+la vez sólo quedaba publicada la interfaz de la ruta por defecto. El alcance de
+esta corrección se limita a firewall, descubrimiento local, runbook y pruebas;
+observador, restore y ContentStore no se tocan.
+
+### 15.2 · Commits
+
+| Commit | Asunto |
+|---|---|
+| `b46477e` | firewall LAN multi-interfaz (Ethernet + Wi-Fi a la vez) |
+| `0b46c01` | laboratorio multi-LAN con red real |
+| `1128e05` | MANIFEST |
+| `dbd9b32` | documentación (52, 07, 50, 53, SECURITY, CHANGELOG, PENDIENTES) y ajuste del laboratorio |
+| este commit | este reporte y MANIFEST |
+
+### 15.3 · Modelo
+
+* `detect_networks() -> list[Network]`: todas las NIC físicas Ethernet/Wi-Fi
+  (`/sys/class/net/<if>/device`; Wi-Fi si tiene `wireless`/`phy80211`), en estado
+  `up`, no esclavas de un bridge y con IPv4 global. El nombre no importa (`enp…`,
+  `wlp…`, `enx…`, `eth0`). Docker (`172.17.0.1/16`, RFC1918), veth, bridges y VPN
+  quedan fuera (hay un test explícito).
+* Por interfaz, de forma independiente: interfaz, dirección, subred, gateway (la
+  ruta por defecto de esa interfaz, menor métrica), MAC del gateway, medio,
+  SSID, perfil NetworkManager y estado (`confiable`, `hold`, `no_confiable`,
+  `sin_identidad`, `no_rfc1918`).
+* Confianza por LAN; el nombre de interfaz no forma parte de la identidad.
+  `/etc/server-oficina/lan-firewall.json`:
+
+```json
+{"trusted_networks": [
+  {"id": "medium=wired|gw_mac=aa:bb:cc:00:00:0a",
+   "components": {"medium": "wired", "gw_mac": "aa:bb:cc:00:00:0a", "nm": "<uuid>"},
+   "first_iface": "enp0s31f6", "first_subnet": "192.168.10.0/24"},
+  {"id": "medium=wifi|ssid=Oficina|gw_mac=aa:bb:cc:00:00:0b",
+   "components": {"medium": "wifi", "ssid": "Oficina", "gw_mac": "aa:bb:cc:00:00:0b", "nm": "<uuid>"},
+   "first_iface": "wlp2s0", "first_subnet": "192.168.48.0/24"}],
+ "syncthing": true, "mdns": true, "publish_api": true}
+```
+
+  El estado por interfaz (subred y gateway actuales, reglas, `hold_since`) vive en
+  `/var/lib/server-oficina/lan-firewall-state.json`; el formato anterior se
+  convierte solo.
+* `trust-current --interface IF` (repetible) y `--confiar-interfaz IF` en el
+  instalador y en `configurar-acceso-lan.sh`. Sin `--interface` sólo actúa si hay
+  exactamente una LAN activa: una LAN nunca se confía por estar enchufada a la
+  vez que otra.
+* Reconciliación **incremental** con el formato real de `ufw status numbered`
+  (verificado con UFW 0.36.2 en un namespace de red, incluido el nombre de
+  interfaz de 15 caracteres): se borran sólo las reglas propias que sobran y se
+  añaden las que faltan. Una LAN que cae o cambia sólo toca sus reglas.
+* HOLD por interfaz.
+* Un bloqueo compartido evita que el timer pise a
+  `configurar-acceso-lan.sh` a mitad de una publicación. El dispatcher reacciona
+  también a `down`/`reapply`.
+* `apply --sync-api` (servicio systemd): con la intención de publicar registrada
+  (`api on`, sólo tras una publicación demostrada), `0.0.0.0` mientras UFW esté
+  activo con entrada `deny`/`reject` y quede al menos una LAN confiable con reglas
+  verificadas; si no, `127.0.0.1`. La API sólo se reinicia en esa transición.
+* `audit` (sólo lectura) comprueba:
+  - Avahi: activo, sin reflector, sin interfaces excluidas, nombre `server-oficina.local`;
+  - no-enrutamiento: `ip_forward`, política FORWARD, UFW `DEFAULT_FORWARD_POLICY`, NAT de una LAN;
+  - escucha de Syncthing y de la API.
+
+### 15.4 · Reglas UFW reales con Ethernet + Wi-Fi
+
+Salida de `ufw status numbered` en el laboratorio (UFW real; en la Latitude
+cambian los nombres de interfaz y las subredes):
+
+```
+[ 1] 22/tcp                     ALLOW IN    Anywhere                   # ssh
+[ 2] 8080/tcp on enp0s31f6      ALLOW IN    192.168.10.0/24            # server-oficina-lan
+[ 3] 8080/tcp on wlp2s0         ALLOW IN    192.168.48.0/24            # server-oficina-lan
+[ 4] 21027/udp on enp0s31f6     ALLOW IN    192.168.10.0/24            # server-oficina-lan
+[ 5] 22000/tcp on enp0s31f6     ALLOW IN    192.168.10.0/24            # server-oficina-lan
+[ 6] 22000/udp on enp0s31f6     ALLOW IN    192.168.10.0/24            # server-oficina-lan
+[ 7] 21027/udp on wlp2s0        ALLOW IN    192.168.48.0/24            # server-oficina-lan
+[ 8] 22000/tcp on wlp2s0        ALLOW IN    192.168.48.0/24            # server-oficina-lan
+[ 9] 22000/udp on wlp2s0        ALLOW IN    192.168.48.0/24            # server-oficina-lan
+[10] 5353/udp on enp0s31f6      ALLOW IN    192.168.10.0/24            # server-oficina-lan
+[11] 5353/udp on wlp2s0         ALLOW IN    192.168.48.0/24            # server-oficina-lan
+```
+
+### 15.5 · Cuando cae una interfaz (medido con red real)
+
+* Cae la Wi-Fi: el reconciliador retira sólo las 5 reglas `on wlp2s0` (0 añadidas).
+  Las de `enp0s31f6` no se tocan, la API conserva el mismo PID en `0.0.0.0`, el
+  HTTP por cable sigue, la sesión Syncthing por cable es la misma (`startedAt`
+  sin cambio) y un archivo nuevo se sincroniza por cable durante la caída.
+* Vuelve la Wi-Fi: vuelven sus reglas sin nueva confianza, `server-oficina.local`
+  vuelve a resolver en la LAN B y un archivo nuevo se sincroniza por Wi-Fi. Con
+  un corte breve (~10 s) la sesión TCP de Syncthing sobrevivió: no se afirma
+  "reconexión", sino que la LAN vuelve a sincronizar.
+* Cae y vuelve el cable: simétrico.
+* Cable en una LAN ajena (otro router): `enp0s31f6` queda `no_confiable` y sin
+  reglas; la Wi-Fi sigue publicada; `trust-current` sin `--interface` se niega.
+  Al volver el router original, la Ethernet se publica sin nueva confianza.
+* Ninguna LAN: la API pasa a `127.0.0.1` (se reinicia y `ss` muestra
+  `127.0.0.1:8080`). Al volver, pasa a `0.0.0.0`.
+
+### 15.6 · `server-oficina.local` en cada LAN
+
+Auditoría: no había configuración propia de Avahi. El paquete de Debian anuncia
+el hostname en todas las interfaces sin reflector, y eso es lo que se quiere. No
+se modifica Avahi; `audit` y el runbook lo verifican. Con Avahi 0.8 real en el
+laboratorio:
+
+```
+Registering new address record for 192.168.48.109 on wlp2s0.IPv4.
+Registering new address record for 192.168.10.23 on enp0s31f6.IPv4.
+Server startup complete. Host name is server-oficina.local.
+```
+
+Una consulta mDNS desde la PC de la LAN A devuelve **sólo** `192.168.10.23`; desde
+la de la LAN B, **sólo** `192.168.48.109`. No hay reflector ni reenvío.
+
+Hallazgo que requiere decisión del responsable: UFW 0.36.2 trae en
+`before.rules` `-A ufw-before-input -p udp -d 224.0.0.251 --dport 5353 -j ACCEPT`.
+Lo verifiqué en el paquete de Ubuntu 24.04; en Debian 13 lo comprueba `audit`.
+Por eso el mDNS multicast se acepta en cualquier interfaz, y en una LAN no
+confiable directamente conectada la Latitude también responde a
+`server-oficina.local` (medido: fase 0). 8080 y 22000 siguen cerrados allí. Las
+reglas 5353 propias limitan el mDNS unicast (medido: bloqueado sin confianza,
+permitido con ella). Evitar la respuesta en LAN ajenas exigiría restringir Avahi
+por nombre de interfaz, lo que choca con la confianza por identidad de red. No
+se implementó.
+
+### 15.7 · Syncthing en ambas LAN
+
+Escucha `default`: tcp y quic en `0.0.0.0:22000`/`[::]:22000`, y 21027/udp. Con
+descubrimiento local, sin global, relays ni NAT:
+- el hub conectó con la PC A por `192.168.10.50:22000` y con la PC B por `192.168.48.60:22000`;
+- cada PC ve al hub en la IP de **su** LAN;
+- un archivo de cada PC llegó al hub;
+- caída de una interfaz: la sesión de la otra sigue (`startedAt` igual) y sincroniza.
+
+### 15.8 · La Latitude no enruta
+
+Ningún script habilita forwarding, bridge, NAT ni reflector (test de contrato).
+En el laboratorio, con una ruta forzada desde la PC A hacia la LAN B vía la
+Latitude, la conexión:
+- **falla** con `ip_forward=0`;
+- **falla** con `ip_forward=1` (como con Docker) y la política FORWARD DROP de UFW;
+- **cruza** con FORWARD ACCEPT. Es el control positivo, que demuestra que la
+  prueba detectaría enrutamiento.
+
+### 15.9 · Pruebas añadidas
+
+| Pedido | Test unitario (`tests/test_lan_firewall.py`, 60 casos) | Red real (`multi_lan_lab.py`) |
+|---|---|---|
+| 1 Ethernet sola | `test_ethernet_only_trusted` | — |
+| 2 Wi-Fi sola | `test_wifi_only_trusted` | — |
+| 3 ambas | `test_ethernet_and_wifi_trusted_simultaneously` | fase 1 |
+| 4 cae Wi-Fi | `test_wifi_drops_ethernet_keeps_serving` | fase 2 |
+| 5 cae Ethernet | `test_ethernet_drops_wifi_keeps_serving` | fase 4 |
+| 6 regresa | `test_dropped_interface_returns_without_new_trust` | fases 3 y 5 |
+| 7 Wi-Fi confiable + Ethernet desconocida | `test_trusted_wifi_and_unknown_ethernet` | fase 6 |
+| 8 Ethernet confiable + Wi-Fi desconocida | `test_trusted_ethernet_and_unknown_wifi` | — |
+| 9 subredes distintas | `test_two_trusted_lans_with_different_subnets` | fase 1 |
+| 10 DHCP Ethernet | `test_independent_dhcp_change_on_ethernet` | — |
+| 11 DHCP Wi-Fi | `test_independent_dhcp_change_on_wifi` | — |
+| 12 router de una LAN | `test_router_change_in_one_lan_does_not_affect_the_other` | fase 6 |
+| 13 reglas simultáneas | `test_ufw_keeps_simultaneous_rules_per_interface` | fase 1 (UFW real) |
+| 14 Syncthing en ambas | `test_syncthing_ports_on_both_lans` | fases 1-5 (Syncthing real) |
+| 15 mDNS limitado | `test_mdns_limited_to_trusted_interfaces` | fases 0-1 (Avahi real) |
+| 16 ninguna LAN → loopback | `test_api_host_follows_trusted_lans`, `test_api_loopback_when_ufw_not_protecting` | fase 7 |
+
+Además:
+- **Tests unitarios:**
+  - detección (sólo NIC físicas, cualquier nombre, esclava de bridge fuera);
+  - confianza por red y no por nombre (adaptador USB);
+  - perfiles NM por interfaz;
+  - HOLD sólo de la interfaz afectada;
+  - estado antiguo convertido;
+  - reglas propias duplicadas o no reconocidas;
+  - `status` de sólo lectura;
+  - parser con salida real de UFW;
+  - auditoría (Avahi, enrutamiento, escucha).
+- **Laboratorio del instalador,** escenarios s2f–s2h (21 en total):
+  - `--confiar-red-actual` con dos LAN se niega;
+  - `--confiar-interfaz` ×2 publica ambas con una URL por LAN;
+  - caída de la Wi-Fi sin reiniciar la API;
+  - ninguna LAN → loopback;
+  - vuelven ambas.
+- **Test de contrato:** multi-interfaz, y la Latitude nunca enruta.
+
+### 15.10 · Validación (código `dbd9b32`, copia limpia `git archive`)
+
+| Suite | Resultado exacto |
+|---|---|
+| pytest Python 3.12 / 3.13 | 235 passed, 1 warning / 235 passed, 1 warning |
+| `VALIDAR_SERVER_OFICINA.sh` | `SYNTAX_OK (94 archivos)`, `BACKEND_OK`, `FRONTEND_OK`, `DEPLOY_OK`, `MANIFEST_CHECK_OK 249 archivos`, **`PACKAGE_OK`** |
+| shellcheck `-x -S warning` | sin avisos |
+| `systemd-analyze verify` | sin directivas inválidas (sólo falta el ejecutable fuera de la Latitude) |
+| Syncthing real + observador | `HUB_WORKER_LAB_OK` 19/19 en 3.12 y 3.13 |
+| Instalador real (namespace) | `INSTALLER_LAB_OK` 21/21 |
+| Restore real (PostgreSQL 16) | `RESTORE_LAB_OK` 9/9 |
+| Red real multi-LAN (UFW, Avahi 0.8, Syncthing 2.1.5) | `MULTI_LAN_LAB_OK` 11/11 fases |
+
+Incidencia local, no del código: una primera ejecución del laboratorio del
+instalador falló en s5. Dentro de la release, un test del observador vio
+`LOCAL_CLOUD_STORE_LOW_SPACE`: el contenedor quedó por debajo de la reserva del
+10 % por los ~5 GB de laboratorios anteriores, y el observador pausó el
+archivado como debe. Tras borrar esos directorios pasó 21/21. En CI no ocurrió.
+
+### 15.11 · CI de GitHub
+
+| Workflow | `1128e05` | `dbd9b32` |
+|---|---|---|
+| Server Oficina CI (3.12 + 3.13 + paquete) | 36300806812 / 36300809609 PASS | 36301285027 / 36301287365 PASS |
+| Syncthing Integration | 36300806809 / 36300809599 PASS | 36301285002 / 36301287351 PASS |
+| Installer Lab (`installer`, `restore`, `multi-lan`) | 36300806883 / 36300809611 PASS | 36301285037 / 36301287324 PASS |
+
+En el runner de GitHub (kernel con IPv6), `multi-lan` pasó las 11 fases. Allí el
+namespace nace con `ip_forward=1`; desde `dbd9b32` el laboratorio fija
+`ip_forward=0` antes de medir, para que la etiqueta sea exacta en cualquier host.
+
+### 15.12 · Gates
+
+| Gate | Entorno | Resultado |
+|---|---|---|
+| Firewall multi-LAN (60 tests, 16 casos pedidos) | local + GitHub | PASS |
+| Instalador con Ethernet + Wi-Fi (s2f–s2h) | local + GitHub | PASS |
+| Red real multi-LAN: UFW por interfaz, `server-oficina.local` por LAN, Syncthing por ambas, caída/regreso, LAN ajena, ninguna LAN, no-enrutamiento | local + GitHub (namespaces; Wi-Fi simulada) | PASS |
+| Latitude real: PC → Ethernet, PC → Wi-Fi, ambas a la vez, pérdida/recuperación de cada interfaz, `server-oficina.local` en cada LAN, SSH, Syncthing | hardware | **NOT RUN** |
+| Resto de gates físicos (PRE, instalación, systemd, PostgreSQL 18.6, backup/restore, reinicios, POST, 1 PC ↔ Latitude) | hardware | **NOT RUN** |
+
+Laboratorio verde ≠ hardware validado. Siguen sin probarse la radio Wi-Fi real,
+NetworkManager real (perfiles, dispatcher), Avahi con el Wi-Fi de la oficina,
+el aislamiento de clientes del punto de acceso y el resolvedor `.local` de
+Windows. **No se pasa a 2 PCs** hasta cerrar el Gate 1 físico con el runbook 52
+(§7 incluido).
