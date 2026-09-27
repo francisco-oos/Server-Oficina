@@ -3,7 +3,10 @@ name: Installer Lab
 # Ejecuta scripts/install-tablet.sh real dentro de un namespace de montaje
 # aislado (tests/integration/installer_lab.py): instalación limpia y
 # reinstalación, colisión de release, rollback por health y por observador,
-# rollback a release legado, backup, réplica externa fail-closed y restore.
+# rollback a release legado, backup, réplica externa fail-closed y restore;
+# publicación LAN fail-closed. El job "restore" ejecuta scripts/restore.sh real
+# contra un PostgreSQL efímero (tests/integration/restore_lab.py): dump
+# truncado, fallo a mitad de pg_restore, vuelta atrás por health.
 # No sustituye al gate físico en la Latitude.
 on:
   push:
@@ -18,6 +21,7 @@ on:
       - "MANIFEST.sha256"
       - "requirements*.txt"
       - "tests/integration/installer_lab.py"
+      - "tests/integration/restore_lab.py"
       - ".github/workflows/installer-lab.yml"
   pull_request:
     paths:
@@ -28,6 +32,7 @@ on:
       - "MANIFEST.sha256"
       - "requirements*.txt"
       - "tests/integration/installer_lab.py"
+      - "tests/integration/restore_lab.py"
       - ".github/workflows/installer-lab.yml"
   workflow_dispatch:
 
@@ -56,3 +61,33 @@ jobs:
         run: |
           sudo cat "$LAB_ROOT/evidence.json" || true
           for f in "$LAB_ROOT"/s*.log; do echo "== $f"; sudo tail -n 40 "$f"; done || true
+
+  restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      LAB_ROOT: ${{ github.workspace }}/runtime/restore-lab
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # El laboratorio reproduce el defecto con el restore anterior (36a5ab8).
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: PostgreSQL (binarios de la distribución)
+        run: |
+          ls /usr/lib/postgresql/*/bin/pg_restore 2>/dev/null \
+            || { sudo apt-get update && sudo apt-get install -y postgresql; }
+          sudo systemctl stop postgresql || true
+
+      - name: Restore real contra PostgreSQL efímero
+        run: sudo -E -H env "PATH=$PATH" python3 tests/integration/restore_lab.py
+
+      - name: Evidencia
+        if: always()
+        run: |
+          sudo cat "$LAB_ROOT/evidence.json" || true
+          for f in "$LAB_ROOT"/r*.log; do echo "== $f"; sudo tail -n 40 "$f"; done || true

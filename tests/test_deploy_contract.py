@@ -220,3 +220,35 @@ def test_lan_publication_is_fail_closed():
     assert "Default: (deny|reject)" in lan
     assert lan.index("set_host 0.0.0.0") > lan.index("apply --require-rules")
     assert "ufw disable" not in lan and "ufw --force disable" not in lan
+
+
+def test_restore_never_leaves_a_partial_live_database():
+    """restore.sh: el dump nunca se aplica sobre la base viva.
+
+    El restore anterior hacía ``pg_restore --clean`` directamente sobre
+    server_oficina: un dump truncado dejaba tablas vaciadas, servicios detenidos
+    y ningún mensaje de fallo (reproducido en tests/integration/restore_lab.py).
+    """
+    restore = (ROOT / "scripts" / "restore.sh").read_text(encoding="utf-8")
+    code = "\n".join(l for l in restore.splitlines() if not l.lstrip().startswith("#"))
+    # Validación completa antes de tocar nada.
+    assert "sha256sum --quiet --strict -c SHA256SUMS" in code
+    assert "pg_restore -f /dev/null < database.dump" in code
+    assert "tar -tzf app-files.tar.gz" in code
+    # Restauración atómica en una base nueva; nunca --clean sobre la viva.
+    assert "--clean" not in code
+    assert re.search(r'pg_restore -U serveroficina -d "\$STAGE_DB" --single-transaction --exit-on-error', code)
+    assert "CREATE DATABASE $STAGE_DB TEMPLATE template0" in code
+    # Intercambio en un único COMMIT y base previa conservada.
+    assert 'BEGIN; ALTER DATABASE $1 RENAME TO $2; ALTER DATABASE $3 RENAME TO $1; COMMIT;' in code
+    assert 'PREV_DB=${DB}_pre_restore_$STAMP' in code
+    # Nada se borra salvo lo creado por esta ejecución (staging con nombre único).
+    assert re.findall(r"\brm -rf\b[^\n]*", code) == ['rm -rf --one-file-system "$STAGE_APP"']
+    assert re.findall(r"DROP DATABASE[^\n\"]*", code) == ["DROP DATABASE IF EXISTS $STAGE_DB WITH (FORCE)"]
+    assert 'mv "$APP/$d" "$PREV_APP/$d"' in code
+    # Códigos y evidencia inequívocos; RESTORE_OK sólo tras /api/health.
+    for code_status in ("finish 20 RESTORE_FAIL", "finish 21 RESTORE_FAIL", "finish 22 RESTORE_FAIL",
+                        "finish 23 RESTORE_FAIL_CRITICO", "finish 0 RESTORE_OK"):
+        assert code_status in code
+    assert code.index("start_services || revert") < code.index("finish 0 RESTORE_OK")
+    assert "trap on_exit EXIT" in code

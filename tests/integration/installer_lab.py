@@ -109,6 +109,11 @@ case "$*" in
   *pg_dump*) printf 'PGDMP-installer-lab %s\n' "$(date +%s%N)" ;;
   *pg_isready*) exit 0 ;;
   *pg_restore*) cat > /dev/null; echo restored >> "$LAB_STATE/pg_restore.log"; exit 0 ;;
+  # psql mínimo para restore.sh (la semántica real de PostgreSQL la cubre restore_lab.py).
+  *psql*"datname = 'server_oficina'"*) echo 1 ;;
+  *psql*"FROM pg_database"*) exit 0 ;;
+  *psql*"FROM pg_tables"*) echo 3 ;;
+  *psql*) echo "psql $*" >> "$LAB_STATE/psql.log"; echo 1 ;;
   logs*) exit 0 ;;
   *) echo "docker stub: $*" >&2; exit 0 ;;
 esac
@@ -365,6 +370,9 @@ def backup_and_restore(release: str):
     check("s10", r.returncode == 0 and (STATE / "pg_restore.log").exists(), r.stderr[-800:])
     check("s10 observador", stop_observer < start_observer)
     check("s10 identidad no aplicada", "NO se aplica automáticamente" in r.stdout)
+    check("s10 RESTORE_OK", "RESTORE_OK" in r.stdout, r.stdout[-400:])
+    psql_log = (STATE / "psql.log").read_text()
+    check("s10 intercambio atómico", "_pre_restore_" in psql_log and "BEGIN; ALTER DATABASE" in psql_log, psql_log)
     record("restore_con_observador", r, observador_detenido_y_reiniciado=True,
            verificacion_historial="AVISO sin PostgreSQL en laboratorio" if "AVISO" in r.stderr else "ejecutada")
 
