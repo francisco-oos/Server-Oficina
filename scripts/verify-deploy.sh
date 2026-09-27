@@ -11,8 +11,11 @@ s=p.read_text()
 for token in ('postgres:18.6','127.0.0.1:5432:5432','/srv/server-oficina/data/postgres:/var/lib/postgresql'):
     assert token in s, token
 installer=Path('scripts/install-tablet.sh').read_text()
-for token in ('PRE_UPGRADE_BACKUP_OK','ROLLBACK_RELEASE_OK','pg_dump','readlink -f "$CURRENT"'):
+for token in ('PRE_UPGRADE_BACKUP_OK','ROLLBACK_RELEASE_OK','pg_dump','readlink -f "$CURRENT"',
+              'assert_new_release','LOCAL_CLOUD=server-oficina-local-cloud','LOCAL_CLOUD_OK',
+              'SERVER_OFICINA_SYNC_ROOT=','SERVER_OFICINA_VERSIONS_ROOT='):
     assert token in installer, token
+assert 'releases/$VERSION' not in installer, 'la release no puede nombrarse sólo por VERSION'
 nas=Path('scripts/configurar-repositorio-smb.sh').read_text()
 assert '/etc/server-oficina/smb-' in nas and 'chmod 600' in nas
 print('DEPLOY_CONTRACT_OK')

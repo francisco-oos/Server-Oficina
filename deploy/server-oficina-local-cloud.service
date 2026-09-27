@@ -10,15 +10,20 @@ User=serveroficina
 Group=serveroficina
 WorkingDirectory=/opt/server-oficina/current
 EnvironmentFile=/etc/server-oficina/server-oficina.env
+Environment=PYTHONDONTWRITEBYTECODE=1
 ExecStart=/opt/server-oficina/current/.venv/bin/python -m app.workers.local_cloud_worker --interval 5 --settle 1
 Restart=on-failure
 RestartSec=5
 UMask=0007
 NoNewPrivileges=true
 PrivateTmp=true
-ProtectSystem=full
 ProtectHome=true
-ReadWritePaths=/srv/server-oficina/data/app /srv/server-oficina/files /srv/server-oficina/versions
+# strict: todo el sistema es de sólo lectura para el observador. Las carpetas
+# sincronizadas (/srv/server-oficina/files) quedan legibles pero NO escribibles:
+# el observador jamás modifica ni borra archivos de trabajo. Sólo escribe el
+# ContentStore histórico. install-tablet.sh crea ambas rutas antes de arrancar.
+ProtectSystem=strict
+ReadWritePaths=/srv/server-oficina/data/app /srv/server-oficina/versions
 
 [Install]
 WantedBy=multi-user.target
