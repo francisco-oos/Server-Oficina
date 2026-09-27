@@ -40,7 +40,13 @@ Revisar en el archivo `~/server-oficina-evidencia/PRE-*.txt`:
 | `ufw status verbose` | activo, `Default: deny (incoming)`; anotar reglas `Server Oficina LAN` fijadas a subred (se reemplazan) y la regla de SSH | SSH depende de una regla que se vaya a tocar |
 | `ip -br addr`, `ip -4 route show default` | una línea por interfaz activa: Ethernet (`enp…`) y Wi-Fi (`wlp…`) pueden estar **las dos**, cada una con su IPv4 y su ruta por defecto (métricas distintas) | una interfaz está en una red que no es de la oficina y se pretende confiar en ella |
 | por **cada** interfaz: `ip neigh show <gateway> dev <if>`, SSID (`iw dev <wlp…> link`), `nmcli -t -f DEVICE,UUID,NAME connection show --active` | anotar interfaz, subred, gateway, MAC del gateway, SSID y perfil NM: es la identidad de **esa** LAN | — |
-| `lan_firewall.py audit` (sección "Descubrimiento local y no-enrutamiento" de la evidencia) | Avahi activo sin reflector ni interfaces excluidas; `ip_forward=0`, o `1` por Docker con `FORWARD DROP` | `enable-reflector=yes`, `FORWARD ACCEPT` con `ip_forward=1`, NAT de una LAN |
+| `lan_firewall.py audit` (sección "Descubrimiento local y no-enrutamiento" de la evidencia; su código queda en `[rc=]`: 0 sin problemas, 5 con problemas) | Avahi activo sin reflector ni interfaces excluidas; `ip_forward=0`, o `1` por Docker con `FORWARD DROP` | `enable-reflector=yes`, `FORWARD ACCEPT` con `ip_forward=1`, NAT de una LAN |
+| `COMPOSE_RECREA_POSTGRES` (sección "Precondiciones del instalador") | `NO`: el hash de Compose del contenedor coincide con el de la candidata | `SI` o `DESCONOCIDO`: el instalador recrearía PostgreSQL **antes** del backup pre-upgrade |
+| `stat` de `secrets/` y `secrets/postgres_password` | secreto `600` (o sin lectura para otros) | secreto legible por otros: corregir permisos antes de instalar |
+| acceso a PyPI (`curl -I https://pypi.org/simple/pip/`) y fuentes apt | `200` | sin acceso: el instalador no podría crear el venv |
+| claves no secretas del env | anotar: el instalador fija `SESSION_HOURS=12`, `COOKIE_SECURE=false` y `HOST=127.0.0.1` hasta publicar; el env previo queda como `server-oficina.env.pre-<fecha>` | — |
+| conteo exacto de filas por tabla | anotar (se compara en POST) | la consulta falla |
+| perfiles NetworkManager: `autoconnect` y `psk-flags` de la Wi-Fi | `yes` y `0` (secreto guardado por el sistema) | — para instalar; con `psk-flags=1` (llavero del usuario) la Latitude arrancaría sin Wi-Fi sin sesión iniciada: bloquea el gate de reinicio |
 
 ## 2 · Validación del paquete en copia limpia
 
@@ -106,6 +112,11 @@ sudo ufw status numbered | grep -E 'server-oficina-lan|22/tcp|SSH'         # reg
 sudo python3 /opt/server-oficina/current/scripts/lan_firewall.py audit    # LAN_AUDIT con "problemas": []
 sudo systemctl start server-oficina-backup.service && sudo cat "$(ls -1d /srv/server-oficina/backups/server-oficina/2* | tail -1)/BACKUP_INFO"
 ```
+
+Comparar el conteo exacto de filas de la evidencia POST con el PRE: ninguna tabla
+existente pierde filas (salvo uso real entre ambos, que se anota) y aparecen las
+tablas nuevas de 0.2 (sólo se añaden tablas; ninguna columna nueva en tablas
+existentes).
 
 Esperado: código `root` sin escritura de grupo/otros; `files` `root:serveroficina 2750`
 (o el modo previo anotado en PRE); `versions` `serveroficina 2750`; firewall con

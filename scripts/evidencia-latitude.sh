@@ -45,13 +45,27 @@ run() {
   run "getent hosts server-oficina.local || echo 'server-oficina.local NO resuelve (desde la propia Latitude)'"
   run "systemctl is-active avahi-daemon || true"
   run "grep -Ev '^[[:space:]]*(#|;|$)' /etc/avahi/avahi-daemon.conf 2>/dev/null || echo 'sin /etc/avahi/avahi-daemon.conf'"
-  run "journalctl -u avahi-daemon -n 30 --no-pager 2>/dev/null | grep -Ei 'registering|conflict|joining|server startup' || true"
+  # Desde el arranque (no sólo las últimas líneas): nombre anunciado, conflictos y altas/bajas por interfaz.
+  run "journalctl -b -u avahi-daemon --no-pager 2>/dev/null | grep -Ei 'host name|conflict|registering new address record|withdrawing|joining|leaving' | tail -40 || true"
+  run "avahi-resolve -4 -n server-oficina.local 2>&1 || echo 'avahi-resolve no disponible (paquete avahi-utils)'"
   run "sysctl net.ipv4.ip_forward"
   run "iptables -S FORWARD 2>/dev/null | head -3 || true"
   run "grep -E '^DEFAULT_FORWARD_POLICY' /etc/default/ufw 2>/dev/null || true"
   run "grep -n '224.0.0.251' /etc/ufw/before.rules 2>/dev/null || echo 'before.rules sin regla mDNS genérica'"
   run "ip -d link show type bridge 2>/dev/null || true"
-  run "python3 $CURRENT/scripts/lan_firewall.py audit 2>/dev/null || python3 $SRC/scripts/lan_firewall.py audit 2>/dev/null || echo 'auditoría LAN no disponible'"
+  # >>> auditoria-lan
+  # Reconciliador de la release activa si lo trae; si no (p. ej. 0.1.0-alpha.3), el de la
+  # candidata. Se ejecuta tal cual para que su código quede en [rc=]: 0 sin problemas,
+  # 5 con problemas. (Encadenarlo con || convertía un 5 en "no disponible" con rc=0.)
+  FW=$CURRENT/scripts/lan_firewall.py
+  [[ -f "$FW" ]] || FW=$SRC/scripts/lan_firewall.py
+  if [[ -f "$FW" ]]; then
+    echo "reconciliador usado: $FW"
+    run "python3 $FW audit"
+  else
+    echo "auditoría LAN no disponible: no existe lan_firewall.py en la release activa ni en la candidata"
+  fi
+  # <<< auditoria-lan
   run timedatectl
 
   echo; echo "== Release activa vs candidata =="
@@ -121,6 +135,35 @@ run() {
   run "sed -E 's/=.*/=<redactado>/' /etc/server-oficina/server-oficina.env"
   run "ls -la /etc/server-oficina/"
 
+  echo; echo "== Precondiciones del instalador (sólo lectura) =="
+  run "python3 --version; node --version 2>/dev/null || echo 'node no instalado (lo instala el instalador)'; docker compose version"
+  run "grep -rhE '^(deb |URIs:)' /etc/apt/sources.list /etc/apt/sources.list.d/ 2>/dev/null | sort -u"
+  run "curl -fsSI --max-time 10 https://pypi.org/simple/pip/ | head -1 || echo 'SIN ACCESO a PyPI: el instalador no podrá crear el venv'"
+  # El instalador copia compose.yml y ejecuta "docker compose up -d postgres" ANTES del
+  # backup pre-upgrade: si el hash difiere, Compose recrearía el contenedor en ese momento.
+  run "sha256sum $DATA/app/infra/compose.yml $SRC/deploy/infra/compose.yml"
+  run "docker inspect server-oficina-postgres --format 'proyecto={{index .Config.Labels \"com.docker.compose.project\"}} archivos={{index .Config.Labels \"com.docker.compose.project.config_files\"}} hash={{index .Config.Labels \"com.docker.compose.config-hash\"}}'"
+  LABEL_HASH=$(docker inspect server-oficina-postgres --format '{{index .Config.Labels "com.docker.compose.config-hash"}}' 2>/dev/null || true)
+  CAND_HASH=$(docker compose -f "$SRC/deploy/infra/compose.yml" config --hash postgres 2>/dev/null | awk '{print $2}' || true)
+  echo "hash contenedor=${LABEL_HASH:-?} hash candidata=${CAND_HASH:-?}"
+  if [[ -n "$LABEL_HASH" && "$LABEL_HASH" == "$CAND_HASH" ]]; then
+    echo "COMPOSE_RECREA_POSTGRES: NO"
+  elif [[ -n "$LABEL_HASH" && -n "$CAND_HASH" ]]; then
+    echo "COMPOSE_RECREA_POSTGRES: SI -> no instalar sin analizar (se recrearía antes del backup pre-upgrade)"
+  else
+    echo "COMPOSE_RECREA_POSTGRES: DESCONOCIDO -> no instalar sin analizar"
+  fi
+  run "stat -c '%U:%G %a %n' $DATA/secrets $DATA/secrets/postgres_password"
+  # Sólo claves no secretas (DATABASE_URL y claves de API nunca se muestran).
+  run "grep -E '^SERVER_OFICINA_(ENV|DATA_DIR|SYNC_ROOT|VERSIONS_ROOT|SESSION_HOURS|COOKIE_SECURE|HOST|PORT)=' /etc/server-oficina/server-oficina.env"
+  echo "Conteo exacto de filas por tabla (comparar en POST: ninguna tabla debe perder filas):"
+  run "docker exec server-oficina-postgres psql -U serveroficina -d server_oficina -Atc \"select table_name || '=' || (xpath('/row/c/text()', query_to_xml(format('select count(*) as c from public.%I', table_name), false, true, '')))[1]::text from information_schema.tables where table_schema='public' and table_type='BASE TABLE' order by 1\""
+  echo "Arranque de la red sin sesión de usuario (psk-flags 0 = secreto guardado por el sistema; 1 = en el llavero del usuario: sin sesión no conecta):"
+  run "nmcli -g NAME,UUID,TYPE,AUTOCONNECT,DEVICE connection show 2>/dev/null || true"
+  run "for u in \$(nmcli -g UUID,TYPE connection show 2>/dev/null | awk -F: '\$2 == \"802-11-wireless\" {print \$1}'); do printf '%s autoconnect=%s psk-flags=%s permisos=%s\n' \"\$(nmcli -g connection.id connection show \$u)\" \"\$(nmcli -g connection.autoconnect connection show \$u)\" \"\$(nmcli -g 802-11-wireless-security.psk-flags connection show \$u)\" \"\$(nmcli -g connection.permissions connection show \$u)\"; done"
+  run "journalctl -b -u NetworkManager --no-pager 2>/dev/null | grep -Ei 'state change|dhcp4|activation' | grep -Ev 'docker|veth|br-' | tail -30 || true"
+  run "ls -la /etc/NetworkManager/dispatcher.d/ 2>/dev/null || echo 'sin dispatcher.d: el reconciliador dependerá del timer (2 min)'"
+
   echo; echo "== Syncthing / firewall =="
   run "command -v syncthing && syncthing --version || echo 'syncthing NO instalado'"
   run "pgrep -a syncthing || echo 'syncthing no está corriendo'"
@@ -128,7 +171,7 @@ run() {
   run "ss -tulpn | grep -E ':(8080|8384|22000|21027|5353)\b' || true"
   run "ufw status verbose"
   run "ufw status numbered"
-  run "python3 $CURRENT/scripts/lan_firewall.py status 2>/dev/null || echo 'reconciliador LAN no disponible en la release activa'"
+  if [[ -f "$FW" ]]; then run "python3 $FW status"; fi
   run "systemctl status server-oficina-lan-firewall.timer --no-pager 2>/dev/null | head -8 || true"
 } > "$OUT"
 
