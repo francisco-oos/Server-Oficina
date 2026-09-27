@@ -41,6 +41,28 @@ usar el endpoint.
 
 El registro mDNS no contiene contraseñas, tokens, rutas sensibles ni secretos.
 
+## Latitude en dos LAN a la vez (Ethernet + Wi-Fi)
+
+Actualizado 2026-09-27. El hub puede estar conectado simultáneamente por cable a
+una LAN y por Wi-Fi a otra. Requisito: las PCs de **cualquiera** de las dos lo
+encuentran y lo usan; las PCs de una LAN no necesitan alcanzar a las de la otra.
+
+- **Nombre:** Avahi publica `server-oficina.local` (hostname del sistema) en
+  cada interfaz, y cada interfaz responde con **su** dirección: una PC por
+  cable obtiene la IP Ethernet de la Latitude; una por Wi-Fi, la IP Wi-Fi.
+  Verificado con Avahi 0.8 real en `tests/integration/multi_lan_lab.py`
+  ("Registering new address record for <IP> on <if>.IPv4" por interfaz).
+- **Sin reflector ni reenvío:** mDNS es link-local y la Latitude pertenece
+  directamente a ambas LAN; `enable-reflector` debe seguir en `no` y no hay
+  forwarding, bridge ni NAT entre ellas (`lan_firewall.py audit`).
+- **Syncthing:** escucha en `0.0.0.0:22000` (tcp y quic) y el descubrimiento
+  local anuncia por broadcast en cada interfaz; cada PC aprende la IP del hub de
+  su propia LAN. Con una interfaz caída, la otra sigue sin reconectar.
+- **Firewall:** reglas por LAN confiable (`in on <if> from <subred>`), ver doc
+  53 §9 y doc 07.
+- **Mismo hostname en ambas LAN:** si Avahi informa un conflicto y renombra a
+  `server-oficina-2.local`, es un hallazgo del gate físico (runbook 52 §7).
+
 ## Orden de resolución del Companion
 
 1. sesión/conexión actual si continúa sana;
@@ -82,6 +104,9 @@ identidad.
 
 ## Pruebas de aceptación
 
+- Latitude con Ethernet y Wi-Fi activas: resolver `server-oficina.local` desde
+  una PC por cable y por Wi-Fi (cada una obtiene la IP de su LAN);
+- caída y regreso independiente de cada interfaz;
 - cambiar DHCP manteniendo la misma red;
 - cambiar a otro router/SSID LAN;
 - reiniciar hub y cliente;

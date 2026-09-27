@@ -149,10 +149,24 @@ Endurecimiento final (mismo PR, 2026-09-27), probado en CI/laboratorio, **no** e
   intercambia de forma atómica; antes `pg_restore --clean` sobre la base viva
   dejaba una restauración parcial con un dump truncado.
 
+Multi-LAN (mismo PR, 2026-09-27), probado en CI/laboratorio (red real en
+namespaces), **no** en la Latitude:
+
+- La Latitude puede estar en Ethernet y Wi-Fi a la vez: antes sólo se publicaba
+  la interfaz de la ruta por defecto. Ahora cada LAN confiable activa tiene sus
+  reglas, su confianza y su recuperación independientes; la API sigue en
+  `0.0.0.0` mientras quede alguna LAN confiable y vuelve a `127.0.0.1` si no
+  queda ninguna. La Latitude no enruta entre LAN.
+- Decisión pendiente del responsable: UFW de Debian acepta mDNS multicast en
+  `before.rules`, así que en una LAN no confiable directamente conectada la
+  Latitude responde a `server-oficina.local` (sin abrir 8080/22000).
+
 Siguen abiertos:
 
-- Todos los gates físicos del runbook 52 (PRE, instalación, systemd, PostgreSQL,
-  permisos, Syncthing hub, backup/restore, UFW, Wi-Fi, reinicios, POST, 1 PC).
+- Todos los gates físicos del runbook 52: PRE, instalación, systemd,
+  PostgreSQL, permisos, Syncthing hub, backup/restore, UFW, acceso por
+  Ethernet, por Wi-Fi y por ambas, pérdida/recuperación de cada interfaz,
+  `server-oficina.local` en cada LAN, reinicios, POST, 1 PC.
 - Rename/move sin vínculo explícito entre documentos.
 - Pantalla de revisión humana para incidencias y conflictos.
 - Retención/GC de `versions/` y configuración de la réplica externa real.

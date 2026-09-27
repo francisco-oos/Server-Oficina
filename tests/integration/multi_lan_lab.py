@@ -437,6 +437,8 @@ def scenarios():
     def crosses() -> bool:
         return ns("pca", "curl", "-fsS", "--max-time", "3", f"http://{PC_B}:9000/", check=False).returncode == 0
 
+    initial_forward = ns("hub", "sysctl", "-n", "net.ipv4.ip_forward").stdout.strip()
+    ns("hub", "sysctl", "-qw", "net.ipv4.ip_forward=0")  # explícito: el valor inicial depende del host
     no_forward = not crosses()
     ns("hub", "sysctl", "-qw", "net.ipv4.ip_forward=1")  # como hace Docker en la Latitude
     docker_like = not crosses()
@@ -450,7 +452,8 @@ def scenarios():
     check("1b auditoría con ip_forward=1", audit_fwd["enrutamiento"]["problemas"] == [], str(audit_fwd))
     sh("ip", "-n", P + "pca", "route", "del", LAN_B)
     sh("ip", "-n", P + "pcb", "route", "del", LAN_A)
-    record("1b_no_enruta_entre_lan", ip_forward_0_bloquea=no_forward, ip_forward_1_con_ufw_bloquea=docker_like,
+    record("1b_no_enruta_entre_lan", ip_forward_inicial=initial_forward, ip_forward_0_bloquea=no_forward,
+           ip_forward_1_con_ufw_bloquea=docker_like,
            control_positivo_forward_accept_cruza=control, auditoria_ip_forward_1=audit_fwd["enrutamiento"])
 
     # 2 · Cae la Wi-Fi: Ethernet sigue sin tocarse (ni reglas, ni API, ni Syncthing).

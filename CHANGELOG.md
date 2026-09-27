@@ -34,11 +34,21 @@ Rama `claude/syncthing-phase1-integration-v0.2` sobre `agent/openai/sync-core-v0
   que restaura su estado previo; arranca con `server-oficina`;
 - permisos mínimos: `files/` sólo lectura para la app, `versions/` sólo para el
   observador;
-- firewall LAN por **identidad de red** (MAC del gateway + perfil
+- firewall LAN **multi-interfaz**: la Latitude puede estar en una LAN por
+  Ethernet y en otra por Wi-Fi a la vez; se publica en todas las LAN confiables
+  activas (reglas `in on <if> from <subred>` por LAN, reconciliación
+  incremental: una LAN que cae o cambia sólo toca sus reglas) y nunca enruta
+  entre ellas (sin forwarding, bridge ni NAT; `lan_firewall.py audit`);
+- confianza por **identidad de red de cada LAN** (MAC del gateway + perfil
   NetworkManager + SSID; nunca sólo SSID o nombre de interfaz) que sigue
-  cambios de IP/DHCP sin fijar subredes; mismo SSID u otra LAN en la misma
-  `eth0` no heredan confianza; las confianzas `wifi:`/`wired:` antiguas se
-  ignoran (`scripts/lan_firewall.py`);
+  cambios de IP/DHCP sin fijar subredes; mismo SSID u otra LAN en el mismo
+  cable no heredan confianza; `trust-current --interface IF` y
+  `--confiar-interfaz IF` (con dos LAN activas, `--confiar-red-actual` se niega);
+  las confianzas `wifi:`/`wired:` antiguas se ignoran (`scripts/lan_firewall.py`);
+- el reconciliador mantiene la API en `0.0.0.0` mientras quede alguna LAN
+  confiable publicada y la devuelve a `127.0.0.1` si no queda ninguna o UFW
+  deja de proteger; `server-oficina.local` se anuncia (Avahi) en cada LAN con la
+  IP de esa LAN;
 - publicación LAN fail-closed: API en `127.0.0.1` salvo UFW activo con entrada
   `deny`/`reject`, red confiable, reglas verificadas y health; si no, salida 10
   `INSTALACION_SOLO_LOCAL` (antes: `|| true` y `0.0.0.0` con sólo ver UFW
@@ -57,8 +67,9 @@ Rama `claude/syncthing-phase1-integration-v0.2` sobre `agent/openai/sync-core-v0
 ### Calidad
 - MANIFEST estricto (`--check` detecta archivos no listados) en CI;
 - laboratorios en CI: Syncthing real + observador (19 escenarios), instalador
-  real en namespace aislado (16 escenarios, incl. LAN fail-closed) y restore
-  real contra PostgreSQL efímero (9 escenarios);
+  real en namespace aislado (21 escenarios, incl. LAN fail-closed y Ethernet +
+  Wi-Fi), restore real contra PostgreSQL efímero (9 escenarios) y red real
+  multi-LAN en namespaces de red con UFW, Avahi y Syncthing reales (11 fases);
 - CI en ramas `agent/**` y `claude/**`, sin `pull_request_target` ni secretos.
 
 ## 0.2.0-alpha.1 — candidato 2026-09-21

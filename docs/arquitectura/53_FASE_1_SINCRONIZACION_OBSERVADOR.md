@@ -132,17 +132,33 @@ con `method=none` y la causa.
   aditivas). Para volver la base atrás se usa el dump `pre-upgrade-*`.
 * `server-oficina-local-cloud` arranca con `server-oficina` (`WantedBy`) y se
   detiene con él (`Requires`).
-* Firewall: `server-oficina-lan-firewall` confía por **identidad de red** —
-  MAC del gateway (obligatoria) + UUID del perfil NetworkManager + SSID + medio,
-  nunca sólo SSID ni nombre de interfaz—, deriva la subred en cada cambio y sólo
-  abre puertos a la subred RFC1918 actual de la interfaz por defecto. Mismo
-  SSID u otra LAN en la misma `eth0` → sin reglas; router reemplazado → exige
-  `trust-current`. Identidad ilegible un momento: reglas mantenidas ≤ 600 s si
-  interfaz/subred/gateway no cambian (ver `scripts/lan_firewall.py`).
+* Multi-LAN: la Latitude puede estar en una LAN por Ethernet y en otra por
+  Wi-Fi **a la vez**; se publica en todas las LAN confiables activas
+  simultáneamente y **no** enruta entre ellas (sin forwarding, bridge ni NAT;
+  `lan_firewall.py audit` lo verifica: `ip_forward=0` o `FORWARD DROP` con
+  Docker). Interfaces candidatas: NIC físicas Ethernet/Wi-Fi `up` con IPv4 (por
+  sysfs, cualquier nombre); Docker, bridges, veth y VPN nunca.
+* Firewall: `server-oficina-lan-firewall` confía por **identidad de red de cada
+  LAN** — MAC del gateway de esa interfaz (obligatoria) + UUID del perfil
+  NetworkManager + SSID + medio, nunca sólo SSID ni nombre de interfaz—; guarda
+  todas las LAN confiadas y deriva la subred de cada una en cada cambio. Para
+  cada LAN confiable activa, reglas `in on <if> from <subred>` (8080; Syncthing
+  22000/tcp, 22000/udp, 21027/udp; mDNS 5353/udp). Reconciliación incremental:
+  una LAN que cae, cambia de subred o de router sólo pierde o cambia **sus**
+  reglas. Mismo SSID u otra LAN en el mismo cable → sin reglas para esa LAN;
+  router reemplazado → `trust-current --interface <if>`. Identidad ilegible un
+  momento: reglas de esa interfaz mantenidas ≤ 600 s si su subred y gateway no
+  cambian (ver `scripts/lan_firewall.py`).
 * Publicación LAN fail-closed: la API escucha en `127.0.0.1` salvo que
   `configurar-acceso-lan.sh` demuestre UFW activo con entrada `deny`/`reject`,
-  red confiable, reglas verificadas y health; si no, salida 10
-  (`INSTALACION_SOLO_LOCAL`), nunca instalación "sana" expuesta.
+  al menos una LAN confiable, reglas verificadas y health; si no, salida 10
+  (`INSTALACION_SOLO_LOCAL`), nunca instalación "sana" expuesta. Después el
+  reconciliador (`apply --sync-api`) mantiene `0.0.0.0` mientras quede alguna LAN
+  confiable publicada y vuelve a `127.0.0.1` si no queda ninguna o UFW deja de
+  proteger; sólo reinicia la API en esa transición.
+* Descubrimiento: Avahi anuncia `server-oficina.local` en cada interfaz con la
+  IP de esa LAN (sin reflector); Syncthing escucha en `0.0.0.0:22000` y anuncia
+  por cada interfaz. Ver doc 50.
 * Restore: validación completa del respaldo (SHA, lectura entera del dump y del
   tar) → `pg_restore --single-transaction` en una base nueva → intercambio de
   nombres en un único COMMIT (la base previa queda como
@@ -157,9 +173,10 @@ con `method=none` y la causa.
 | Paquete (`PACKAGE_OK`, MANIFEST estricto) | CI + copia limpia | `VALIDAR_SERVER_OFICINA.sh` |
 | Syncthing real (transporte, 3 nodos) | CI | `syncthing_smoke.py` |
 | Syncthing real + observador (19 escenarios) | CI + laboratorio local | `hub_worker_lab.py` |
-| Instalador real en namespace aislado (16 escenarios, incl. publicación LAN fail-closed) | CI + laboratorio local | `installer_lab.py` |
+| Instalador real en namespace aislado (21 escenarios, incl. publicación LAN fail-closed y Ethernet + Wi-Fi) | CI + laboratorio local | `installer_lab.py` |
+| Red real multi-LAN: Ethernet + Wi-Fi a la vez con UFW, Avahi y Syncthing reales en namespaces de red (11 fases) | CI + laboratorio local | `multi_lan_lab.py` |
 | Restore real contra PostgreSQL efímero (9 escenarios) | CI + laboratorio local | `restore_lab.py` |
-| **Latitude real**: PRE, instalación, systemd, PostgreSQL, permisos, Syncthing hub, backup/restore, UFW, cambio de Wi-Fi, reinicios, POST, 1 PC ↔ Latitude | **pendiente** | runbook 52 |
+| **Latitude real**: PRE, instalación, systemd, PostgreSQL, permisos, Syncthing hub, backup/restore, UFW, acceso por Ethernet, por Wi-Fi y por ambas, pérdida/recuperación de cada interfaz, `server-oficina.local` en cada LAN, reinicios, POST, 1 PC ↔ Latitude | **pendiente** | runbook 52 |
 
 Laboratorio verde ≠ hardware validado. No se pasa a 2 PCs sin cerrar 1 PC ↔ Latitude.
 
@@ -175,6 +192,15 @@ Laboratorio verde ≠ hardware validado. No se pasa a 2 PCs sin cerrar 1 PC ↔ 
 * El firewall necesita leer la MAC del gateway (ARP) y, en Wi-Fi, el SSID; sin
   ellos no hay reglas nuevas. Reemplazar el router exige `trust-current`.
 * Una vez publicada la API, la protección de 8080 es UFW: un `ufw disable`
-  manual la deja accesible hasta volver a ejecutar `configurar-acceso-lan.sh`.
+  manual la deja accesible hasta la siguiente ejecución del reconciliador
+  (≤ 2 min), que la devuelve a `127.0.0.1`.
+* UFW de Debian acepta mDNS multicast en `before.rules` desde cualquier
+  interfaz: en una LAN no confiable directamente conectada la Latitude también
+  responde a `server-oficina.local` (sin abrir 8080/22000). Evitarlo exigiría
+  restringir Avahi por nombre de interfaz, lo que no casa con la confianza por
+  identidad de red; decisión pendiente del responsable.
+* Una LAN sin gateway no tiene identidad verificable y no se publica.
+* Wi-Fi y NetworkManager reales sólo se prueban en el gate físico: el
+  laboratorio multi-LAN simula la radio.
 * El restore necesita espacio para una segunda copia de la base mientras
   prepara; la base previa se conserva y se borra a mano tras verificar.
