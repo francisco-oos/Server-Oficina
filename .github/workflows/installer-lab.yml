@@ -49,7 +49,7 @@ jobs:
           python-version: "3.13"
 
       - name: Instalador real en namespace aislado
-        run: sudo -E env "PATH=$PATH" python3 tests/integration/installer_lab.py
+        run: sudo -E -H env "PATH=$PATH" python3 tests/integration/installer_lab.py
 
       - name: Evidencia
         if: always()

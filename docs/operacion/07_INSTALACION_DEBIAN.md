@@ -53,13 +53,19 @@ Desde otro equipo autorizado use `http://IP_DE_LA_TABLET:8080`.
 
 ## Cambio de red
 
-Si la tableta cambia de red/subred:
+El acceso LAN lo gestiona `server-oficina-lan-firewall` (instalado por
+`configurar-acceso-lan.sh`, que el instalador ejecuta si UFW está activo). La
+confianza es por red (SSID o cable) y la subred se recalcula sola al cambiar de
+router o DHCP. Para una red **nueva** hace falta una decisión explícita:
 
 ```bash
-sudo ./scripts/configurar-acceso-lan.sh
+sudo python3 /opt/server-oficina/current/scripts/lan_firewall.py status          # qué corresponde y por qué
+sudo python3 /opt/server-oficina/current/scripts/lan_firewall.py trust-current   # confiar en la red actual
 ```
 
-Revise reglas UFW anteriores antes de dejarlas acumuladas.
+Sólo se abren puertos a subredes privadas RFC1918 de la interfaz por defecto;
+las reglas antiguas fijadas a una subred (`Server Oficina LAN`) se reemplazan y
+las reglas ajenas (SSH) no se tocan.
 
 ## Backup / Restore
 

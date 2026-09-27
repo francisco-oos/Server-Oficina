@@ -25,9 +25,8 @@ if [[ "$LC_WAS_ACTIVE" == active ]]; then systemctl start "$LOCAL_CLOUD"; fi
 
 # Consistencia base ↔ historial (versions/ no viaja en el respaldo diario).
 if [[ -x /opt/server-oficina/current/.venv/bin/python && -f /etc/server-oficina/server-oficina.env ]]; then
-  ( cd /opt/server-oficina/current && set -a && . /etc/server-oficina/server-oficina.env && set +a \
-      && .venv/bin/python -m app.workers.verify_history ) \
-    || echo "AVISO: faltan o están dañados objetos de versions/; restaurarlos desde la réplica externa (BACKUP_VERSIONS_DEST) y repetir: python -m app.workers.verify_history" >&2
+  /opt/server-oficina/current/scripts/verificar-historial.sh \
+    || echo "AVISO: faltan o están dañados objetos de versions/; restaurarlos desde la réplica externa (BACKUP_VERSIONS_DEST) y repetir: sudo ./scripts/verificar-historial.sh --deep" >&2
 fi
 if [[ -f syncthing-hub-identity.tar.gz ]]; then
   echo "Identidad Syncthing del hub disponible en $BACKUP/syncthing-hub-identity.tar.gz."

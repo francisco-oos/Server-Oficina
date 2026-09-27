@@ -210,10 +210,12 @@ def backup_and_restore(release: str):
     for name in ("cert.pem", "key.pem", "config.xml"):
         (identity / name).write_text(f"lab {name}\n")
     backup = "exec /opt/server-oficina/current/scripts/backup.sh"
-    base = srv / "backups" / "server-oficina"
 
-    r = run_in_ns(backup, "s7_backup_sin_replica")
-    daily = sorted(p for p in base.iterdir() if p.name[0].isdigit())[-1]
+    same_second = "20260927-120000"  # tres respaldos en el mismo segundo (manual + timer)
+    r = run_in_ns(backup, "s7_backup_sin_replica", LAB_STAMP=same_second)
+    # backup.sh imprime su directorio: no se deduce por nombre (dos respaldos en
+    # el mismo segundo reciben sufijo único y el orden alfabético no sirve).
+    daily = lab_path(r.stdout.strip().splitlines()[-1])
     info = (daily / "BACKUP_INFO").read_text()
     sums = subprocess.run(["sha256sum", "-c", "SHA256SUMS"], cwd=daily, capture_output=True, text=True)
     key_mode = stat.S_IMODE((daily / "syncthing-hub-identity.tar.gz").stat().st_mode)
@@ -225,7 +227,8 @@ def backup_and_restore(release: str):
            identidad_syncthing_modo=f"{key_mode:04o}", inventario_objetos=2)
 
     (NS["/etc/server-oficina"] / "backup.env").write_text("BACKUP_VERSIONS_DEST=/mnt/so-respaldo/versions\n")
-    r = run_in_ns(backup, "s8_replica_no_montada", pre="mkdir -p /mnt/so-respaldo")
+    r = run_in_ns(backup, "s8_replica_no_montada", pre="mkdir -p /mnt/so-respaldo", LAB_STAMP=same_second)
+    failed_dir = lab_path(r.stdout.strip().splitlines()[-1])
     check("s8 fail-closed", r.returncode == 3 and "no está montado" in r.stderr, r.stderr[-500:])
     record("replica_externa_no_montada_fail_closed", r)
 
@@ -233,10 +236,13 @@ def backup_and_restore(release: str):
     replica.mkdir()
     r = run_in_ns(backup, "s9_replica_ok",
                   pre=f'mkdir -p /mnt/so-respaldo && mount -t tmpfs tmpfs /mnt/so-respaldo && '
-                      f'trap "cp -a /mnt/so-respaldo/. {replica}/" EXIT')
+                      f'trap "cp -a /mnt/so-respaldo/. {replica}/" EXIT', LAB_STAMP=same_second)
     check("s9", r.returncode == 0, r.stderr[-800:])
-    daily = sorted(p for p in base.iterdir() if p.name[0].isdigit())[-1]
+    first_daily = daily
+    daily = lab_path(r.stdout.strip().splitlines()[-1])
     info = (daily / "BACKUP_INFO").read_text()
+    check("s9 directorios únicos", len({first_daily, failed_dir, daily}) == 3,
+          f"{first_daily.name} {failed_dir.name} {daily.name}")
     check("s9 replica", "versions_replica_externa=OK:2_nuevos" in info, info)
     record("replica_externa_versions_verificada", r, info=info.strip().splitlines())
 

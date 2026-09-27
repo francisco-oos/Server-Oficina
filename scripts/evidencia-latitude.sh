@@ -43,6 +43,8 @@ run() {
   run "readlink -f $CURRENT || true"
   run "cat $CURRENT/RELEASE_INFO 2>/dev/null || echo 'sin RELEASE_INFO (instalada con el esquema releases/<VERSION>)'"
   run "ls -lah /opt/server-oficina/releases/"
+  run "du -sh /opt/server-oficina/releases/* 2>/dev/null | tail -10"
+  run "stat -c '%U:%G %a %n' $CURRENT/ $CURRENT/app 2>/dev/null || true"
   run "cat $SRC/VERSION"
   run "git -c safe.directory=$SRC -C $SRC rev-parse HEAD 2>/dev/null || echo 'candidata sin git'"
   run "git -c safe.directory=$SRC -C $SRC status --short --untracked-files=no 2>/dev/null | head -20"
@@ -85,7 +87,8 @@ run() {
   echo; echo "== Backups =="
   run "ls -la $DATA/backups/server-oficina | tail -8"
   LAST=$(ls -1d "$DATA"/backups/server-oficina/2* 2>/dev/null | tail -1)
-  if [[ -n "$LAST" ]]; then run "cd '$LAST' && sha256sum -c SHA256SUMS"; fi
+  if [[ -n "$LAST" ]]; then run "cd '$LAST' && sha256sum -c SHA256SUMS"; run "cat '$LAST/BACKUP_INFO' 2>/dev/null || echo 'respaldo sin BACKUP_INFO (formato previo)'"; fi
+  run "cat /etc/server-oficina/backup.env 2>/dev/null || echo 'sin backup.env: versions/ sin réplica externa'"
 
   echo; echo "== Almacenamiento =="
   run df -h
@@ -108,6 +111,11 @@ run() {
   run "systemctl list-units --all --no-pager 'syncthing*' || true"
   run "ss -tulpn | grep -E ':(8080|8384|22000|21027|5353)\b' || true"
   run "ufw status verbose"
+  run "ufw status numbered"
+  run "python3 $CURRENT/scripts/lan_firewall.py status 2>/dev/null || echo 'reconciliador LAN no disponible en la release activa'"
+  run "systemctl status server-oficina-lan-firewall.timer --no-pager 2>/dev/null | head -8 || true"
+  run "iw dev 2>/dev/null | grep -E 'Interface|ssid' || true"
+  run "nmcli -t -f DEVICE,TYPE,STATE,CONNECTION dev 2>/dev/null || echo 'nmcli no disponible'"
 } > "$OUT"
 
 chown "$OWNER": "$OUTDIR" "$OUT" 2>/dev/null || true

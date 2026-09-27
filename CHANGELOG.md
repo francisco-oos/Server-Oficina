@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.2.0-alpha.1 — integración Fase 1 Syncthing / observador (2026-09-27)
+
+Rama `claude/syncthing-phase1-integration-v0.2` sobre `agent/openai/sync-core-v0.2`
+(`ee5a8ef`). Candidata de laboratorio: **gates físicos en la Latitude pendientes**.
+
+### Observador Nube Local
+- el worker nunca había funcionado como servicio: caía con
+  `NoReferencedTableError` al primer archivo (corregido en el modelo);
+- `RECOVERED` al restaurar un archivo borrado con el mismo SHA; otro contenido
+  en la misma ruta es `MODIFIED`;
+- `DELETED` sólo con raíz confiable: raíz ausente, sin permisos, con E/S
+  fallida, sin `.stfolder`, montada sobre otro dispositivo o vacía sin verificar
+  deja el share `UNAVAILABLE` con código; un subdirectorio ilegible protege su
+  subárbol;
+- incidencias por archivo aisladas (nombre no portable, colisión de
+  mayúsculas, symlink, cambio durante la ingesta, espacio) y visibles en
+  `metadata.observer` del share;
+- huella `(tamaño, mtime, inodo, ctime)`: el SHA sólo se reutiliza con huella
+  idéntica; re-verificación tras archivar (carrera de escritura corregida);
+- nombres NFD o con espacios en disco ya se ingieren;
+- reserva de espacio configurable en `versions/`, limpieza de `.partial-*`
+  huérfanos, aislamiento de errores por share, log sin spam;
+- atribución técnica de **equipo** por `modifiedBy` de Syncthing (persona y
+  sesión requieren Companion);
+- `python -m app.workers.verify_history [--deep]` y `scripts/verificar-historial.sh`.
+
+### Instalación y operación
+- release `VERSION+fecha.gCOMMIT`, nunca reutilizada; `current` atómico;
+  primera instalación ya no deja `current` en bucle; código de la release de
+  root; PostgreSQL sano y backup pre-upgrade obligatorios antes de promover;
+- instala y activa `server-oficina-local-cloud` sólo tras health, con rollback
+  que restaura su estado previo; arranca con `server-oficina`;
+- permisos mínimos: `files/` sólo lectura para la app, `versions/` sólo para el
+  observador;
+- firewall LAN por red confiable (SSID/cable) que sigue cambios de
+  router/DHCP sin fijar subredes (`scripts/lan_firewall.py`);
+- backup con inventario de `versions/`, identidad Syncthing del hub y réplica
+  externa fail-closed; restore que detiene/rearranca el observador y verifica
+  el historial; la retención ya no borra `pre-upgrade-*`.
+
+### Calidad
+- MANIFEST estricto (`--check` detecta archivos no listados) en CI;
+- laboratorios: Syncthing real + observador (19 escenarios) e instalador real
+  en namespace aislado (11 escenarios), ambos en CI;
+- CI en ramas `agent/**` y `claude/**`, sin `pull_request_target` ni secretos.
+
 ## 0.2.0-alpha.1 — candidato 2026-09-21
 
 Evolución local-first sobre 0.1.0-alpha.4. Los formatos de oficina continúan

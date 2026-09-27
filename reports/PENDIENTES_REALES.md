@@ -120,6 +120,33 @@ Abiertos:
 - Syncthing de Debian (hub) y de Windows (PC) pueden diferir de mayor versión;
   CI prueba sólo 2.1.5.
 
+### Estado tras la integración 2026-09-27 (rama `claude/syncthing-phase1-integration-v0.2`)
+
+Resueltos en código y probados en CI/laboratorio (**no** en la Latitude):
+
+- UFW por subred fija → reconciliador por red confiable (`scripts/lan_firewall.py`);
+  gate de cambio de Wi-Fi sigue pendiente de ejecución física.
+- Atribución de **equipo** vía `modifiedBy` de Syncthing (requiere API key y PC
+  registrada). Persona y sesión: siguen requiriendo Companion.
+- Backup de `versions/` (inventario + réplica externa opcional fail-closed) e
+  identidad Syncthing del hub; restore con verificación de historial.
+- Nueva auditoría: carrera hash/tamaño, reemplazo con igual tamaño y mtime,
+  nombres NFD, subárbol ilegible, EIO, raíz vacía/cambio de dispositivo,
+  `.partial` huérfanos, `current` en bucle en primera instalación, código de
+  release editable por el operador, backup pre-upgrade omitido, retención que
+  borraba `pre-upgrade-*`, observador caído tras DETENER/INICIAR.
+
+Siguen abiertos:
+
+- Todos los gates físicos del runbook 52 (PRE, instalación, systemd, PostgreSQL,
+  permisos, Syncthing hub, backup/restore, UFW, Wi-Fi, reinicios, POST, 1 PC).
+- Rename/move sin vínculo explícito entre documentos.
+- Pantalla de revisión humana para incidencias y conflictos.
+- Retención/GC de `versions/` y configuración de la réplica externa real.
+- Syncthing del hub (Debian) vs PCs (Windows): versión mayor por confirmar.
+- Archivos muy grandes: tres lecturas al archivar y ciclo bloqueado mientras tanto.
+- Companion Windows (persona, sesión, journal offline, leases reales).
+
 ### Administración GitHub pendiente
 
 La integración GitHub usada por este trabajo no expone una mutación de
