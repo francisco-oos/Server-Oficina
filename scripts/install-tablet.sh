@@ -166,9 +166,17 @@ fi
 # bucle de reinicios (RestartSec=5). No borra archivos de trabajo.
 systemctl enable "$LOCAL_CLOUD" >/dev/null
 systemctl restart "$LOCAL_CLOUD"
+LC_BASE=$(systemctl show -p NRestarts --value "$LOCAL_CLOUD" 2>/dev/null || true)
 sleep 8
 LC_STATE=$(systemctl is-active "$LOCAL_CLOUD" 2>/dev/null || true)
-LC_RESTARTS=$(systemctl show -p NRestarts --value "$LOCAL_CLOUD" 2>/dev/null || echo "?")
+LC_NOW=$(systemctl show -p NRestarts --value "$LOCAL_CLOUD" 2>/dev/null || true)
+# Delta de reinicios automáticos desde el restart manual (no depende de si
+# systemd reinicia o no el contador en un restart explícito).
+if [[ "$LC_BASE" =~ ^[0-9]+$ && "$LC_NOW" =~ ^[0-9]+$ ]]; then
+  LC_RESTARTS=$((LC_NOW - LC_BASE))
+else
+  LC_RESTARTS="?"
+fi
 if [[ "$LC_STATE" != "active" || "$LC_RESTARTS" != "0" ]]; then
   echo "LOCAL_CLOUD_FAIL: estado=$LC_STATE reinicios=$LC_RESTARTS" >&2
   journalctl -u "$LOCAL_CLOUD" -n 50 --no-pager >&2 || true
