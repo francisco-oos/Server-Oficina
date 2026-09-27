@@ -47,7 +47,13 @@ def client():
 
 
 @pytest.fixture()
-def db():
+def db(client):
+    """Sesión directa sobre el esquema creado por el arranque real.
+
+    Depender de ``client`` garantiza el esquema también al ejecutar un módulo
+    aislado (antes ``pytest tests/test_content_store.py`` fallaba con
+    ``no such table`` porque dependía del orden de la suite).
+    """
     s = SessionLocal()
     try:
         yield s

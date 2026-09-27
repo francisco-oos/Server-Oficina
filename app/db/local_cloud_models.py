@@ -15,6 +15,7 @@ from typing import Any
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.db import models as _core_models  # noqa: F401 -- registra projects/users/... referenciadas por FK
 from app.db.base import Base
 
 
