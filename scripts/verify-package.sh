@@ -4,7 +4,6 @@ cd "$(dirname "$0")/.."
 ./scripts/verify-backend.sh
 ./scripts/verify-frontend.sh
 ./scripts/verify-deploy.sh
-if [[ -f MANIFEST.sha256 ]]; then
-  sha256sum -c MANIFEST.sha256
-fi
+# Detecta hash distinto, archivo faltante y archivo no listado en el manifiesto.
+./scripts/generate-manifest.sh --check
 echo "PACKAGE_OK"
