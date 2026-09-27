@@ -2,16 +2,28 @@
 set -euo pipefail
 if [[ ${EUID:-$(id -u)} -ne 0 ]]; then echo "Ejecute con sudo/root" >&2; exit 1; fi
 SRC=$(cd "$(dirname "$0")/.." && pwd)
-VERSION=$(cat "$SRC/VERSION")
-RELEASE=/opt/server-oficina/releases/$VERSION
+# shellcheck source=scripts/lib-release.sh
+source "$SRC/scripts/lib-release.sh"
+VERSION=$(tr -d '[:space:]' < "$SRC/VERSION")
+STAMP=$(date +%Y%m%d-%H%M%S)
+RELEASE_ID=$(release_id "$SRC" "$STAMP")
+RELEASE=/opt/server-oficina/releases/$RELEASE_ID
 CURRENT=/opt/server-oficina/current
 CONF=/etc/server-oficina
 DATA=/srv/server-oficina
 INFRA=$DATA/app/infra
+FILES=$DATA/files
+VERSIONS=$DATA/versions
 SERVICE_USER=serveroficina
 SERVICE_GROUP=serveroficina
-STAMP=$(date +%Y%m%d-%H%M%S)
+LOCAL_CLOUD=server-oficina-local-cloud
 PREVIOUS=$(readlink -f "$CURRENT" 2>/dev/null || true)
+LOCAL_CLOUD_WAS_ENABLED=$(systemctl is-enabled "$LOCAL_CLOUD" 2>/dev/null || true)
+
+# Nunca sobrescribir la release activa ni reutilizar un directorio instalado.
+assert_new_release "$RELEASE" "$PREVIOUS" || exit 6
+echo "Release nueva: $RELEASE_ID"
+echo "Release activa previa: ${PREVIOUS:-NINGUNA}"
 
 command -v docker >/dev/null 2>&1 || { echo "Docker no está instalado" >&2; exit 2; }
 docker compose version >/dev/null 2>&1 || { echo "Docker Compose plugin no está disponible" >&2; exit 3; }
@@ -26,8 +38,30 @@ if [[ ! -s "$DATA/secrets/postgres_password" ]]; then
   chmod 600 "$DATA/secrets/postgres_password"
 fi
 
+# Carpetas de Nube Local declaradas en server-oficina-local-cloud.service.
+# Sólo se crean si faltan: nunca se cambia (ni recursivamente) el dueño de una
+# carpeta existente porque Syncthing del hub puede depender de sus permisos.
+for dir in "$FILES" "$VERSIONS"; do
+  if [[ ! -d "$dir" ]]; then
+    install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 2770 "$dir"
+    echo "CREADO: $dir"
+  fi
+done
+runuser -u "$SERVICE_USER" -- test -w "$VERSIONS" || { echo "$VERSIONS no es escribible por $SERVICE_USER" >&2; exit 8; }
+runuser -u "$SERVICE_USER" -- test -r "$FILES" -a -x "$FILES" || { echo "$FILES no es legible por $SERVICE_USER" >&2; exit 8; }
+
 # Copiar y validar la nueva release ANTES de tocar el puntero current.
-rsync -a --delete --exclude '.venv' --exclude '__pycache__' --exclude 'runtime' --exclude 'tests/test.db' --exclude 'tests/runtime' "$SRC/" "$RELEASE/"
+rsync -a --exclude '.git' --exclude '.venv' --exclude 'venv' --exclude '__pycache__' --exclude '*.pyc' \
+  --exclude '.pytest_cache' --exclude 'runtime' --exclude 'tests/test.db' --exclude 'tests/runtime' \
+  --exclude '.env' "$SRC/" "$RELEASE/"
+cat > "$RELEASE/RELEASE_INFO" <<INFO
+release_id=$RELEASE_ID
+version=$VERSION
+git_commit=$(git -c safe.directory="$SRC" -C "$SRC" rev-parse HEAD 2>/dev/null || echo desconocido)
+installed_at=$STAMP
+installed_by=${SUDO_USER:-root}
+previous_release=${PREVIOUS:-NINGUNA}
+INFO
 python3 -m venv "$RELEASE/.venv"
 "$RELEASE/.venv/bin/pip" install --upgrade pip
 "$RELEASE/.venv/bin/pip" install -r "$RELEASE/requirements-dev.txt"
@@ -42,6 +76,7 @@ if docker inspect server-oficina-postgres >/dev/null 2>&1; then
   if docker exec server-oficina-postgres pg_isready -U serveroficina -d server_oficina >/dev/null 2>&1; then
     docker exec server-oficina-postgres pg_dump -U serveroficina -d server_oficina -Fc > "$PREBACK/database.dump"
     if [[ -n "$PREVIOUS" && -f "$PREVIOUS/VERSION" ]]; then cp "$PREVIOUS/VERSION" "$PREBACK/PREVIOUS_VERSION"; fi
+    echo "$RELEASE_ID" > "$PREBACK/NEW_RELEASE_ID"
     sha256sum "$PREBACK/database.dump" > "$PREBACK/SHA256SUMS"
     chmod 750 "$PREBACK"; chmod 640 "$PREBACK"/* 2>/dev/null || true
     echo "PRE_UPGRADE_BACKUP_OK: $PREBACK"
@@ -66,24 +101,54 @@ from urllib.parse import quote_plus
 print(quote_plus(os.environ['DBPASS']))
 PY
 )
-cat > "$CONF/server-oficina.env" <<ENV
+ENV_FILE=$CONF/server-oficina.env
+ENV_OLD=""
+if [[ -f "$ENV_FILE" ]]; then
+  ENV_OLD=$CONF/server-oficina.env.pre-$STAMP
+  cp -p "$ENV_FILE" "$ENV_OLD"
+fi
+cat > "$ENV_FILE" <<ENV
 SERVER_OFICINA_ENV=production
 SERVER_OFICINA_DATABASE_URL=postgresql+psycopg://serveroficina:${DBPASS_URL}@127.0.0.1:5432/server_oficina
 SERVER_OFICINA_DATA_DIR=/srv/server-oficina/data/app
+SERVER_OFICINA_SYNC_ROOT=$FILES
+SERVER_OFICINA_VERSIONS_ROOT=$VERSIONS
 SERVER_OFICINA_SESSION_HOURS=12
 SERVER_OFICINA_COOKIE_SECURE=false
 SERVER_OFICINA_HOST=${APP_HOST}
 SERVER_OFICINA_PORT=8080
 ENV
-chown root:"$SERVICE_GROUP" "$CONF/server-oficina.env"
-chmod 640 "$CONF/server-oficina.env"
+# Ajustes agregados por el operador (p. ej. API de Syncthing) sobreviven a la actualización.
+MANAGED='^(SERVER_OFICINA_ENV|SERVER_OFICINA_DATABASE_URL|SERVER_OFICINA_DATA_DIR|SERVER_OFICINA_SYNC_ROOT|SERVER_OFICINA_VERSIONS_ROOT|SERVER_OFICINA_SESSION_HOURS|SERVER_OFICINA_COOKIE_SECURE|SERVER_OFICINA_HOST|SERVER_OFICINA_PORT)='
+if [[ -n "$ENV_OLD" ]]; then
+  grep -E '^[A-Z_][A-Z0-9_]*=' "$ENV_OLD" | grep -Ev "$MANAGED" >> "$ENV_FILE" || true
+fi
+chown root:"$SERVICE_GROUP" "$ENV_FILE"
+chmod 640 "$ENV_FILE"
 chown -R "$SERVICE_USER":"$SERVICE_GROUP" "$DATA/data/app"
 chmod 2770 "$DATA/data/app"
 
 install -m 0644 "$RELEASE/deploy/server-oficina.service" /etc/systemd/system/server-oficina.service
 install -m 0644 "$RELEASE/deploy/server-oficina-backup.service" /etc/systemd/system/server-oficina-backup.service
 install -m 0644 "$RELEASE/deploy/server-oficina-backup.timer" /etc/systemd/system/server-oficina-backup.timer
+install -m 0644 "$RELEASE/deploy/$LOCAL_CLOUD.service" "/etc/systemd/system/$LOCAL_CLOUD.service"
 systemctl daemon-reload
+
+rollback() {
+  echo "$1: intentando rollback de release" >&2
+  if [[ -n "$PREVIOUS" && -d "$PREVIOUS" ]]; then
+    ln -sfn "$PREVIOUS" "$CURRENT"
+  fi
+  # El observador vuelve a su estado previo; una release sin worker no puede ejecutarlo.
+  if [[ "$LOCAL_CLOUD_WAS_ENABLED" != "enabled" || -z "$PREVIOUS" || ! -f "$PREVIOUS/app/workers/local_cloud_worker.py" ]]; then
+    systemctl disable --now "$LOCAL_CLOUD" >/dev/null 2>&1 || true
+  fi
+  if [[ -n "$PREVIOUS" && -d "$PREVIOUS" ]]; then
+    systemctl restart server-oficina || true
+    sleep 2
+    curl -fsS http://127.0.0.1:8080/api/health >/dev/null 2>&1 && echo "ROLLBACK_RELEASE_OK: $PREVIOUS" >&2 || true
+  fi
+}
 
 # Promoción controlada: si el health check falla, se recupera el current previo.
 ln -sfn "$RELEASE" "$CURRENT"
@@ -92,22 +157,32 @@ systemctl restart server-oficina
 systemctl enable --now server-oficina-backup.timer
 sleep 3
 if ! curl -fsS http://127.0.0.1:8080/api/health | python3 -m json.tool; then
-  echo "HEALTH_FAIL: intentando rollback de release" >&2
   journalctl -u server-oficina -n 100 --no-pager >&2 || true
-  if [[ -n "$PREVIOUS" && -d "$PREVIOUS" ]]; then
-    ln -sfn "$PREVIOUS" "$CURRENT"
-    systemctl restart server-oficina || true
-    sleep 2
-    curl -fsS http://127.0.0.1:8080/api/health >/dev/null 2>&1 && echo "ROLLBACK_RELEASE_OK: $PREVIOUS" >&2 || true
-  fi
+  rollback HEALTH_FAIL
   exit 5
 fi
+
+# Observador Nube Local: sólo tras health OK y verificando que no quede en
+# bucle de reinicios (RestartSec=5). No borra archivos de trabajo.
+systemctl enable "$LOCAL_CLOUD" >/dev/null
+systemctl restart "$LOCAL_CLOUD"
+sleep 8
+LC_STATE=$(systemctl is-active "$LOCAL_CLOUD" 2>/dev/null || true)
+LC_RESTARTS=$(systemctl show -p NRestarts --value "$LOCAL_CLOUD" 2>/dev/null || echo "?")
+if [[ "$LC_STATE" != "active" || "$LC_RESTARTS" != "0" ]]; then
+  echo "LOCAL_CLOUD_FAIL: estado=$LC_STATE reinicios=$LC_RESTARTS" >&2
+  journalctl -u "$LOCAL_CLOUD" -n 50 --no-pager >&2 || true
+  rollback LOCAL_CLOUD_FAIL
+  exit 7
+fi
+echo "LOCAL_CLOUD_OK: $LOCAL_CLOUD activo"
 
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q '^Status: active'; then "$RELEASE/scripts/configurar-acceso-lan.sh" || true; fi
 if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then "$RELEASE/scripts/install-desktop-launchers.sh" || true; fi
 IP=$(hostname -I | awk '{print $1}')
-echo "Instalado: Server Oficina $VERSION"
+echo "Instalado: Server Oficina $VERSION ($RELEASE_ID)"
 echo "Release actual: $(readlink -f "$CURRENT")"
+echo "Release previa conservada para rollback: ${PREVIOUS:-NINGUNA}"
 echo "Local: http://127.0.0.1:8080"
 if [[ "$APP_HOST" == "0.0.0.0" ]]; then echo "LAN:   http://${IP:-IP_DE_LA_TABLET}:8080 (UFW activo; revisar regla de subred)"; else echo "LAN:   NO habilitada: UFW no estaba activo"; fi
 echo "NAS/evidencias: configure desde la UI; no hay rutas de campamento hardcodeadas."
