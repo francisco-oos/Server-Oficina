@@ -2,6 +2,7 @@ from __future__ import annotations
 
 """API de Nube Local: sincronización, documentos, aprendizaje y grafo."""
 
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -10,6 +11,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import require
+from app.core.config import load_settings
 from app.db.base import get_db
 from app.db.local_cloud_models import (
     DocumentClarification, DocumentRecord, DocumentVersion, FileConflict, FileLease,
@@ -133,8 +135,20 @@ def create_share(data: ShareIn, db: Session = Depends(get_db), user: User = Depe
     policy = data.delete_policy.strip().upper()
     if policy not in {"ARCHIVE", "REVIEW", "DENY"}:
         raise HTTPException(422, "delete_policy debe ser ARCHIVE, REVIEW o DENY")
+    # El observador sólo archiva carpetas sincronizadas bajo SERVER_OFICINA_SYNC_ROOT;
+    # una raíz arbitraria (/etc, /home) nunca debe entrar al ContentStore.
+    sync_root = load_settings().sync_root
+    local_root = Path(data.local_root).expanduser()
+    if not local_root.is_absolute():
+        raise HTTPException(422, "local_root debe ser una ruta absoluta")
+    try:
+        local_root.resolve().relative_to(sync_root)
+    except ValueError:
+        raise HTTPException(422, f"local_root debe estar dentro de {sync_root}")
+    if local_root.resolve() == sync_root:
+        raise HTTPException(422, "local_root debe ser una subcarpeta, no la raíz de sincronización")
     row = SyncShare(code=code, name=data.name.strip(), owner_area_code=data.owner_area_code.strip().upper(),
-                    local_root=data.local_root, nas_relative_root=data.nas_relative_root,
+                    local_root=str(local_root.resolve()), nas_relative_root=data.nas_relative_root,
                     syncthing_folder_id=data.syncthing_folder_id, delete_policy=policy,
                     metadata_json=data.metadata)
     db.add(row); db.commit(); db.refresh(row)
