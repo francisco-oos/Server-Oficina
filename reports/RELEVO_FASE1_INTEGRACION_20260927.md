@@ -12,7 +12,7 @@ gate físico se ejecutó.
 | Rama base | `agent/openai/sync-core-v0.2` @ `ee5a8efdce993a91196eebcd50888567aa438e9f` |
 | Rama anterior de Claude (conservada, sin reescribir) | `claude/wonderful-goldberg-dzyoeb` @ `e701cf590598794705c2a6e935f22b2d42d3ed02` |
 | Rama candidata nueva | `claude/syncthing-phase1-integration-v0.2` |
-| Código validado | `1e6af35eafc49f40215c7e4886541bb72e11653d` (este reporte se añade encima) |
+| Código validado | `1e6af35eafc49f40215c7e4886541bb72e11653d` (relevo 2); `dc73634c14620f9e6113631671a9202633102c4b` tras el endurecimiento final (§14) |
 | `main` | `2d40e558…` sin cambios; no contiene commits de Claude |
 | PR draft | #3 → `agent/openai/sync-core-v0.2` (no fusionado) |
 
@@ -223,3 +223,163 @@ relevo anterior se conserva sin cambios.
 Revisión independiente del PR #3 y decisión de merge por el responsable. Después,
 ejecutar `docs/operacion/52_RUNBOOK_GATE_1_PC_LATITUDE.md` en `server-oficina`.
 **No pasar a 2 PCs** hasta cerrar el Gate 1 físico en verde.
+
+## 14 · Endurecimiento final (relevo 3, mismo PR #3)
+
+Última ronda antes del runbook 52. Misma rama y mismo PR; sin arquitectura
+nueva. Los 18 defectos de §4 son la línea base y siguen cubiertos por la suite.
+
+### 14.1 · Commits añadidos sobre `36a5ab8`
+
+| Commit | Asunto |
+|---|---|
+| `b3c07e7` | firewall LAN: identidad de red por gateway y perfil, no por SSID/interfaz |
+| `33d267a` | instalación fail-closed respecto a la publicación LAN |
+| `2559997` | restore sin restauración parcial de la base viva |
+| `c06e9ce` | documentación (07, 36, 52, 53, SECURITY, CHANGELOG, PENDIENTES) y MANIFEST |
+| `dc73634` | restore valida el usuario de servicio antes de preparar (hallado por CI) |
+| este commit | este reporte y MANIFEST |
+
+### 14.2 · Identidad de red del firewall
+
+Defecto: la confianza se guardaba como `wifi:<SSID>` o `wired:<iface>`. Con el
+reconciliador de `36a5ab8`, un punto de acceso con el mismo SSID en otro router
+y otra LAN enchufada a la misma `eth0` **recibían reglas 8080** (reproducido en
+test antes de corregir).
+
+Ahora (`scripts/lan_firewall.py`) la identidad es:
+
+| Componente | Origen | Obligatorio |
+|---|---|---|
+| `gw_mac` | `ip -4 neigh show <gateway> dev <iface>` (con un ping para poblar ARP) | **sí** |
+| `nm` | UUID del perfil activo (`nmcli -t -f DEVICE,UUID connection show --active`) | si NetworkManager gestiona la interfaz |
+| `ssid` | `iw dev <iface> link` | en Wi-Fi |
+| `medium` | `wifi` / `wired` | sí |
+
+Una red es confiable sólo si **todos** los componentes guardados coinciden. La
+subred no forma parte de la identidad: se deriva en cada ejecución.
+
+* Nueva IP por DHCP, o el mismo router con otro rango: misma identidad; las
+  reglas siguen solas a la subred nueva.
+* Mismo SSID u otra LAN en la misma `eth0`: otro gateway → sin reglas.
+* Router reemplazado: exige `trust-current` (compromiso asumido y documentado:
+  portabilidad frente a seguridad; no se edita ninguna IP).
+* Identidad ilegible un momento (ARP vacío, NetworkManager reiniciando o con
+  error): se **mantienen** las reglas sólo si interfaz, subred y gateway no
+  cambian y durante ≤ `SO_LAN_FIREWALL_HOLD_SECONDS` (600 s); luego se cierran.
+  Si cambia la subred, se cierran de inmediato.
+* Sin NetworkManager: la huella es gateway + medio (+ SSID en Wi-Fi); nunca
+  SSID solo ni nombre de interfaz solo.
+* Confianzas antiguas (`wifi:`/`wired:`) se ignoran; hay que confiar una vez.
+* Se mantiene: sólo RFC1918 (lista explícita), sólo en la interfaz por
+  defecto, nunca `allow from anywhere`, nunca se tocan reglas ajenas (SSH);
+  la primera ejecución nunca confía implícitamente (`--trust-current-if-empty`
+  eliminado).
+
+### 14.3 · Qué pasa ahora si el firewall falla
+
+Antes: `install-tablet.sh` fijaba `SERVER_OFICINA_HOST=0.0.0.0` con sólo ver
+UFW activo y ejecutaba `configurar-acceso-lan.sh || true`: una instalación
+«sana» podía quedar escuchando en la LAN sin reglas verificadas.
+
+Ahora:
+
+1. El instalador escribe siempre `SERVER_OFICINA_HOST=127.0.0.1`.
+2. Si UFW está activo, `configurar-acceso-lan.sh` (sin `|| true`) sólo publica
+   si demuestra: UFW activo con `Default: deny|reject (incoming)`, red
+   confiable, `lan_firewall.py apply --require-rules` con reglas verificadas y
+   `/api/health` tras escuchar en `0.0.0.0` → `LAN_PUBLICADA`.
+3. Cualquier fallo, incluido un error inesperado (trap `EXIT`), deja la API en
+   `127.0.0.1` (reiniciándola si hacía falta), imprime
+   `LAN_NO_PUBLICADA: <causa>` y sale con 10. El instalador vuelve a forzar
+   `127.0.0.1` por defensa en profundidad y termina con
+   `INSTALACION_SOLO_LOCAL` y **salida 10**: nunca se declara sana una
+   instalación que esperaba LAN y no la tiene.
+4. El rollback restaura también el env previo.
+5. Nunca desactiva UFW, nunca abre 8080 globalmente, nunca toca SSH.
+6. `--confiar-red-actual` (instalador o script) es la decisión explícita.
+
+Riesgo residual documentado: tras publicar, la protección de 8080 es UFW; un
+`ufw disable` manual la expone hasta volver a ejecutar `configurar-acceso-lan.sh`.
+
+### 14.4 · Garantías del restore
+
+Defecto reproducido con PostgreSQL real: el restore de `36a5ab8` ejecutaba
+`pg_restore --clean` sobre `server_oficina`. Con un dump truncado (SHA256SUMS
+coherente) terminó con salida 1, `documents` y `lab_marker` **vacías**,
+`projects` y una tabla de un esquema posterior (`newer_feature`) mezcladas, API
+y observador **detenidos** y ningún mensaje de fallo explícito.
+
+Ahora (`scripts/restore.sh`):
+
+| Fase | Garantía | Salida si falla |
+|---|---|---|
+| Validación | SHA256SUMS estricto; dump leído entero (`pg_restore -f /dev/null`); `tar -tzf` entero y sólo `imports/`/`evidence/`; base y usuario de servicio existen | 20, nada tocado |
+| Preparación | base nueva con `pg_restore --single-transaction --exit-on-error --no-owner`; staging de archivos | 21, staging descartado; base viva, archivos y servicios intactos (nunca detenidos) |
+| Intercambio | un único COMMIT de dos `ALTER DATABASE … RENAME`; base previa conservada como `server_oficina_pre_restore_<fecha>`; `imports/`/`evidence/` previos **movidos** a `.pre-restore-<fecha>/` | vuelta atrás |
+| Health | `RESTORE_OK` sólo tras `/api/health` con los datos restaurados | 22 revertido; 23 `RESTORE_FAIL_CRITICO` con servicios detenidos a propósito |
+
+Archivos extra en `data/app` (subidos después del respaldo): no se borran;
+quedan en `.pre-restore-<fecha>/` con `DIFERENCIAS_CON_RESPALDO.tsv`
+(`ausente_en_respaldo` / `distinto_en_respaldo`). Sólo se eliminan la base
+temporal y el staging creados por la propia ejecución, con nombre único.
+Resultado de cada ejecución en `backups/restore-logs/restore-<fecha>.txt`.
+
+Evaluado y descartado: `pg_restore --clean --single-transaction` sobre la base
+viva. Es atómico ante un fallo, pero (a) `--clean` no puede eliminar objetos de
+los que dependen objetos de un esquema posterior (en el laboratorio:
+`cannot drop constraint projects_pkey … constraint newer_feature_project_id_fkey
+depends on index projects_pkey`), así que restaurar un respaldo anterior a una
+migración fallaría siempre; (b) una vez confirmado, si el health falla no hay
+vuelta atrás (la base previa ya no existe); (c) obliga a detener los servicios
+durante toda la restauración. Base nueva + intercambio de nombres evita las tres.
+
+### 14.5 · Pruebas nuevas
+
+| Prueba | Cubre |
+|---|---|
+| `tests/test_lan_firewall.py` (32 casos, reescrito) | los 7 pedidos: misma red + IP nueva; misma identidad + subred nueva; mismo SSID otra red; misma `eth0` otra red; red nueva no confiable; red pública; pérdida temporal de identidad. Además: perfil NM en otro router, otro perfil en el mismo router, primera ejecución, error de NM, Wi-Fi sin SSID, entradas antiguas, puertos opcionales, reglas antiguas y SSH, idempotencia, UFW inactivo, fallo al aplicar, RFC1918, parsers |
+| `installer_lab.py` s2a–s2e | sin red confiable → salida 10, `127.0.0.1`, regla antigua retirada, SSH intacta; reconciliador que falla → salida 10, `127.0.0.1`, sin reglas; con confianza → `0.0.0.0` y regla sólo de la subred; política `allow` → despublica; misma `eth0` en otra LAN → despublica. s4: rollback restaura el env |
+| `restore_lab.py` (9 escenarios, PostgreSQL real) | defecto con el script anterior; dump truncado (20); fallo a mitad de `pg_restore` (21); tar truncado y tar con `../` (20); SHA inválido (20); health falla → revierte todo (22); health falla siempre → 23 con servicios detenidos; restore correcto de esquema anterior con archivo extra conservado (0) |
+| `test_deploy_contract.py` | `test_lan_publication_is_fail_closed`, `test_restore_never_leaves_a_partial_live_database` |
+
+### 14.6 · Validación (código `dc73634`)
+
+| Suite | Resultado exacto |
+|---|---|
+| pytest Python 3.12 | 206 passed, 1 warning (Starlette/AnyIO deprecado) |
+| pytest Python 3.13 | 206 passed, 1 warning |
+| `VALIDAR_SERVER_OFICINA.sh` (copia limpia `git archive`) | `SYNTAX_OK (93 archivos)`, `BACKEND_OK`, `FRONTEND_OK`, `DEPLOY_OK`, `MANIFEST_CHECK_OK 248 archivos`, **`PACKAGE_OK`**, exit 0 |
+| shellcheck `-x -S warning` | 42 scripts + dispatcher NetworkManager, sin avisos |
+| `systemd-analyze verify` | 6 unidades sin directivas inválidas (sólo falta el ejecutable fuera de la Latitude) |
+| Syncthing real + observador (v2.1.5) | `HUB_WORKER_LAB_OK`, 19/19, Python 3.12 y 3.13 (local sobre `c06e9ce`; `dc73634` sólo toca restore; CI sobre `dc73634`) |
+| Instalador real (namespace) | `INSTALLER_LAB_OK`, 16/16 |
+| Restore real (PostgreSQL 16 efímero) | `RESTORE_LAB_OK`, 9/9; repetido también sin el usuario `serveroficina` en el host |
+
+### 14.7 · CI de GitHub
+
+| Workflow | Commit | Run | Resultado |
+|---|---|---|---|
+| Server Oficina CI | `c06e9ce` | 36290552739 (push), 36290554869 (PR) | PASS / PASS |
+| Syncthing Integration | `c06e9ce` | 36290552701 (push), 36290554888 (PR) | PASS / PASS |
+| Installer Lab | `c06e9ce` | 36290552745 (push), 36290554887 (PR) | FAIL: job `restore`; el runner no tiene el usuario `serveroficina` → `chown` falló en la preparación (salida 21, nada tocado, pero como «error inesperado»). Corregido en `dc73634` |
+| Server Oficina CI | `dc73634` | 36296115932 (push), 36296119108 (PR) | PASS / PASS |
+| Syncthing Integration | `dc73634` | 36296116050 (push), 36296119092 (PR) | PASS / PASS |
+| Installer Lab (`installer` + `restore`) | `dc73634` | 36296115897 (push), 36296119117 (PR) | PASS / PASS |
+
+El commit de este reporte sólo añade texto y MANIFEST; su CI se consigna en el PR.
+
+### 14.8 · Gates tras el endurecimiento
+
+| Gate | Entorno | Resultado |
+|---|---|---|
+| Unitarios + contrato 3.12 / 3.13 | local + GitHub | PASS (206) |
+| Paquete `PACKAGE_OK` | local copia limpia + GitHub | PASS |
+| Firewall: identidad de red (32 casos, incluidos los 7 pedidos) | local + GitHub | PASS |
+| Publicación LAN fail-closed (reconciliador que falla) | laboratorio del instalador, local + GitHub | PASS |
+| Restore transaccional (9 escenarios) | PostgreSQL efímero, local + GitHub | PASS |
+| Syncthing real + observador | local + GitHub | PASS |
+| PRE, instalación, systemd, PostgreSQL 18.6, permisos, hub, backup/restore, UFW y cambio de Wi-Fi con NetworkManager real, reinicios, POST, 1 PC ↔ Latitude | hardware (Latitude) | **NOT RUN** |
+
+Laboratorio verde ≠ hardware validado. El siguiente paso sigue siendo §13: revisión
+independiente y, después, el runbook 52 en `server-oficina`.
