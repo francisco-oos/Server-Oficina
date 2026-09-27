@@ -1,0 +1,58 @@
+name: Installer Lab
+
+# Ejecuta scripts/install-tablet.sh real dentro de un namespace de montaje
+# aislado (tests/integration/installer_lab.py): instalación limpia y
+# reinstalación, colisión de release, rollback por health y por observador,
+# rollback a release legado, backup, réplica externa fail-closed y restore.
+# No sustituye al gate físico en la Latitude.
+on:
+  push:
+    branches:
+      - "agent/**"
+      - "claude/**"
+    paths:
+      - "scripts/**"
+      - "deploy/**"
+      - "INSTALAR_EN_TABLETA.sh"
+      - "VERSION"
+      - "MANIFEST.sha256"
+      - "requirements*.txt"
+      - "tests/integration/installer_lab.py"
+      - ".github/workflows/installer-lab.yml"
+  pull_request:
+    paths:
+      - "scripts/**"
+      - "deploy/**"
+      - "INSTALAR_EN_TABLETA.sh"
+      - "VERSION"
+      - "MANIFEST.sha256"
+      - "requirements*.txt"
+      - "tests/integration/installer_lab.py"
+      - ".github/workflows/installer-lab.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  installer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      LAB_ROOT: ${{ github.workspace }}/runtime/installer-lab
+    steps:
+      - uses: actions/checkout@v7
+
+      # Python 3.13 = python3 de Debian 13 en la Latitude.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Instalador real en namespace aislado
+        run: sudo -E env "PATH=$PATH" python3 tests/integration/installer_lab.py
+
+      - name: Evidencia
+        if: always()
+        run: |
+          sudo cat "$LAB_ROOT/evidence.json" || true
+          for f in "$LAB_ROOT"/s*.log; do echo "== $f"; sudo tail -n 40 "$f"; done || true

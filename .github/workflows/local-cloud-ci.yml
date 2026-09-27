@@ -1,10 +1,15 @@
 name: Server Oficina CI
 
+# Ramas de agentes (agent/**, claude/**) y cualquier PR. Sólo `pull_request`
+# (nunca pull_request_target) y token de lectura: un fork no obtiene secretos
+# ni escritura. workflow_dispatch permite re-ejecutar la candidata a mano.
 on:
   pull_request:
   push:
     branches:
       - "agent/**"
+      - "claude/**"
+  workflow_dispatch:
 
 permissions:
   contents: read
