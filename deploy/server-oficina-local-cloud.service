@@ -21,9 +21,10 @@ ProtectHome=true
 # strict: todo el sistema es de sólo lectura para el observador. Las carpetas
 # sincronizadas (/srv/server-oficina/files) quedan legibles pero NO escribibles:
 # el observador jamás modifica ni borra archivos de trabajo. Sólo escribe el
-# ContentStore histórico. install-tablet.sh crea ambas rutas antes de arrancar.
+# ContentStore histórico (versions/), que install-tablet.sh crea antes de
+# arrancar. data/app no hace falta: sólo lee la configuración.
 ProtectSystem=strict
-ReadWritePaths=/srv/server-oficina/data/app /srv/server-oficina/versions
+ReadWritePaths=/srv/server-oficina/versions
 
 [Install]
 WantedBy=multi-user.target

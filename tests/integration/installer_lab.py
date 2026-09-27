@@ -1,0 +1,307 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+"""Laboratorio del instalador real (``scripts/install-tablet.sh``) sin la Latitude.
+
+El script de producción se ejecuta **sin modificar** dentro de un namespace de
+montaje privado donde ``/opt/server-oficina``, ``/srv/server-oficina``,
+``/etc/server-oficina`` y ``/etc/systemd/system`` son directorios temporales.
+Sólo se sustituyen por stubs los comandos que no existen fuera del hardware:
+``docker``, ``systemctl``, ``journalctl``, ``curl`` (health), ``apt-get``,
+``ufw``, ``sleep`` y ``date`` (para forzar una colisión de release). ``rsync``,
+``install``, ``useradd``, ``runuser``, el venv, ``pip`` y ``verify-package.sh``
+son reales.
+
+NO sustituye al gate físico: no hay systemd, PostgreSQL ni hardware reales.
+
+Requiere root (o sudo) y ``unshare``. Uso:
+
+    sudo -E LAB_ROOT=/tmp/installer-lab python3 tests/integration/installer_lab.py
+
+Resultado en ``$LAB_ROOT/evidence.json``; imprime ``INSTALLER_LAB_OK``.
+"""
+
+import hashlib
+import json
+import os
+import shutil
+import stat
+import subprocess
+import sys
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[2]
+LAB = Path(os.environ.get("LAB_ROOT", REPO / "runtime" / "installer-lab")).resolve()
+BIN = LAB / "bin"
+STATE = LAB / "state"
+NS = {  # ruta real en el namespace -> directorio del laboratorio
+    "/opt/server-oficina": LAB / "opt",
+    "/srv/server-oficina": LAB / "srv",
+    "/etc/server-oficina": LAB / "etc-so",
+    "/etc/systemd/system": LAB / "etc-systemd",
+}
+EVIDENCE: dict = {"scenarios": []}
+
+STUBS = {
+    "apt-get": "exit 0\n",
+    "journalctl": "exit 0\n",
+    "sleep": "exit 0\n",
+    "ufw": 'echo "Status: inactive"\n',
+    "date": (
+        'if [[ "${1:-}" == "+%Y%m%d-%H%M%S" && -n "${LAB_STAMP:-}" ]]; then echo "$LAB_STAMP"; exit 0; fi\n'
+        'exec /bin/date "$@"\n'
+    ),
+    "docker": r'''
+case "$*" in
+  "compose version") exit 0 ;;
+  compose*"up -d postgres") touch "$LAB_STATE/postgres.up"; exit 0 ;;
+  inspect\ -f*) echo healthy ;;
+  "inspect server-oficina-postgres") exit 0 ;;
+  *pg_dump*) printf 'PGDMP-installer-lab %s\n' "$(date +%s%N)" ;;
+  *pg_isready*) exit 0 ;;
+  logs*) exit 0 ;;
+  *) echo "docker stub: $*" >&2; exit 0 ;;
+esac
+''',
+    "curl": r'''
+current=$(readlink -f /opt/server-oficina/current 2>/dev/null || true)
+if [[ "${LAB_BREAK_HEALTH:-0}" == 1 && "$current" != "${LAB_GOOD_CURRENT:-}" ]]; then exit 7; fi
+echo '{"status":"ok","lab":true}'
+''',
+    "systemctl": r'''
+echo "systemctl $*" >> "$LAB_STATE/systemctl.log"
+now=0; [[ "${1:-}" == "enable" || "${1:-}" == "disable" ]] && [[ "${2:-}" == "--now" ]] && now=1
+current=$(readlink -f /opt/server-oficina/current 2>/dev/null || true)
+broken=0
+[[ "${LAB_BREAK_WORKER:-0}" == 1 && "$current" != "${LAB_GOOD_CURRENT:-}" ]] && broken=1
+start() {
+  if [[ "$1" == server-oficina-local-cloud && $broken == 1 ]]; then echo activating > "$LAB_STATE/$1.active"
+  else echo active > "$LAB_STATE/$1.active"; fi
+}
+case "${1:-}" in
+  daemon-reload|status|cat) exit 0 ;;
+  enable) shift; [[ "${1:-}" == --now ]] && shift; for u in "$@"; do echo enabled > "$LAB_STATE/$u.enabled"; [[ $now == 1 ]] && start "$u"; done; exit 0 ;;
+  disable) shift; [[ "${1:-}" == --now ]] && shift; for u in "$@"; do rm -f "$LAB_STATE/$u.enabled"; [[ $now == 1 ]] && echo inactive > "$LAB_STATE/$u.active"; done; exit 0 ;;
+  restart|start) start "$2"; exit 0 ;;
+  is-enabled) if [[ -f "$LAB_STATE/$2.enabled" ]]; then echo enabled; exit 0; fi; echo disabled; exit 1 ;;
+  is-active) s=$(cat "$LAB_STATE/$2.active" 2>/dev/null || echo inactive); echo "$s"; [[ $s == active ]] ;;
+  show)
+    unit="${!#}"; f="$LAB_STATE/$unit.restarts"; n=$(cat "$f" 2>/dev/null || echo 0)
+    if [[ "$unit" == server-oficina-local-cloud && $broken == 1 ]]; then n=$((n+1)); echo $n > "$f"; fi
+    echo "$n"; exit 0 ;;
+  *) exit 0 ;;
+esac
+''',
+}
+
+
+def sh(*args, **kwargs) -> subprocess.CompletedProcess:
+    return subprocess.run(args, check=True, text=True, capture_output=True, **kwargs)
+
+
+def lab_path(ns_path: str) -> Path:
+    for prefix, target in NS.items():
+        if ns_path == prefix or ns_path.startswith(prefix + "/"):
+            return target / ns_path[len(prefix):].lstrip("/")
+    raise ValueError(ns_path)
+
+
+def current_release() -> str | None:
+    link = NS["/opt/server-oficina"] / "current"
+    return os.readlink(link) if link.is_symlink() else None
+
+
+def service_state(unit: str) -> dict:
+    return {
+        "enabled": (STATE / f"{unit}.enabled").exists(),
+        "active": (STATE / f"{unit}.active").read_text().strip() if (STATE / f"{unit}.active").exists() else "inactive",
+    }
+
+
+def prepare():
+    if LAB.exists():
+        shutil.rmtree(LAB)
+    for path in [BIN, STATE, *NS.values()]:
+        path.mkdir(parents=True)
+    for name, body in STUBS.items():
+        target = BIN / name
+        target.write_text("#!/usr/bin/env bash\n" + body)
+        target.chmod(0o755)
+    # Candidata: archivos versionados del árbol actual, con su propio git y MANIFEST.
+    src = LAB / "src"
+    src.mkdir()
+    files = sh("git", "-C", str(REPO), "ls-files", "-z").stdout.split("\0")
+    for rel in filter(None, files):
+        source = REPO / rel
+        if source.is_file():
+            (src / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, src / rel)
+    sh("bash", str(src / "scripts" / "generate-manifest.sh"))
+    git = ["git", "-C", str(src), "-c", "user.email=lab@lab", "-c", "user.name=lab"]
+    sh(*git, "init", "-q")
+    sh(*git, "add", "-A")
+    sh(*git, "commit", "-qm", "candidata laboratorio")
+    # Dueño no root, como un checkout de adminoficina.
+    subprocess.run(["chown", "-R", "1000:1000", str(src)], check=False)
+    return src
+
+
+def run_installer(src: Path, name: str, **env_extra) -> subprocess.CompletedProcess:
+    mounts = "\n".join(f'mkdir -p "{ns}" && mount --bind "{real}" "{ns}"' for ns, real in NS.items())
+    script = f"set -e\n{mounts}\nexec \"{src}/scripts/install-tablet.sh\"\n"
+    env = {k: v for k, v in os.environ.items() if k not in {"SUDO_USER", "SUDO_UID", "SUDO_GID"}}
+    env.update({"PATH": f"{BIN}:{os.environ['PATH']}", "LAB_STATE": str(STATE), **env_extra})
+    result = subprocess.run(
+        ["unshare", "--mount", "--propagation", "private", "bash", "-c", script],
+        env=env, text=True, capture_output=True, timeout=1800,
+    )
+    (LAB / f"{name}.log").write_text(result.stdout + "\n--- stderr ---\n" + result.stderr)
+    return result
+
+
+def check(name: str, condition: bool, detail: str = ""):
+    if not condition:
+        raise AssertionError(f"{name}: {detail}")
+
+
+def record(name: str, result: subprocess.CompletedProcess, **facts):
+    entry = {"escenario": name, "exit": result.returncode, **facts}
+    EVIDENCE["scenarios"].append(entry)
+    print(f"INSTALLER_LAB_STEP {json.dumps(entry, ensure_ascii=False)}", flush=True)
+
+
+def tree_digest(path: Path) -> str:
+    digest = hashlib.sha256()
+    for item in sorted(p for p in path.rglob("*") if p.is_file() and ".venv" not in p.parts):
+        digest.update(item.relative_to(path).as_posix().encode())
+        digest.update(item.read_bytes())
+    return digest.hexdigest()
+
+
+def mode(path: Path) -> str:
+    st = path.stat()
+    return f"{st.st_uid}:{st.st_gid}:{stat.S_IMODE(st.st_mode):04o}"
+
+
+def reset_state():
+    for path in [STATE, *NS.values()]:
+        shutil.rmtree(path)
+        path.mkdir(parents=True)
+
+
+def main() -> int:
+    if os.geteuid() != 0:
+        print("installer_lab requiere root (sudo -E)", file=sys.stderr)
+        return 2
+    src = prepare()
+
+    # 0 · primera instalación con health roto: sin release previa no hay rollback
+    #     posible, pero `current` jamás puede quedar apuntándose a sí mismo.
+    r = run_installer(src, "s0_primera_rota", LAB_BREAK_HEALTH="1", LAB_GOOD_CURRENT="ninguna")
+    link = NS["/opt/server-oficina"] / "current"
+    target = current_release()
+    check("s0", r.returncode == 5, r.stderr[-1500:])
+    check("s0 sin bucle", target is not None and target != "/opt/server-oficina/current"
+          and lab_path(target).is_dir(), str(target))
+    check("s0 previa", "Release activa previa: NINGUNA" in r.stdout, r.stdout[:300])
+    check("s0 observador no habilitado", not service_state("server-oficina-local-cloud")["enabled"])
+    record("primera_instalacion_health_fail", r, current=target, symlink_valido=lab_path(target).is_dir())
+    reset_state()
+
+    # 1 · instalación limpia
+    r = run_installer(src, "s1_limpia")
+    check("s1", r.returncode == 0, r.stderr[-2000:])
+    first = current_release()
+    rel1 = lab_path(first)
+    env_text = (NS["/etc/server-oficina"] / "server-oficina.env").read_text()
+    world_or_group_writable = [
+        str(p) for p in rel1.rglob("*")
+        if ".venv" not in p.parts and not p.is_symlink() and stat.S_IMODE(p.stat().st_mode) & 0o022
+    ]
+    code_owners = {p.stat().st_uid for p in rel1.rglob("*") if ".venv" not in p.parts and not p.is_symlink()}
+    backups = sorted((NS["/srv/server-oficina"] / "backups" / "server-oficina").glob("pre-upgrade-*"))
+    sums_ok = subprocess.run(["sha256sum", "-c", "SHA256SUMS"], cwd=backups[-1], capture_output=True).returncode == 0
+    check("s1 current", first.startswith("/opt/server-oficina/releases/") and "+" in first, first)
+    check("s1 dueño root", code_owners == {0}, str(code_owners))
+    check("s1 sin escritura grupo/otros", not world_or_group_writable, str(world_or_group_writable[:5]))
+    check("s1 env", "SERVER_OFICINA_SYNC_ROOT=/srv/server-oficina/files" in env_text
+          and "SERVER_OFICINA_VERSIONS_ROOT=/srv/server-oficina/versions" in env_text, env_text)
+    check("s1 unidades", all((NS["/etc/systemd/system"] / u).is_file() for u in (
+        "server-oficina.service", "server-oficina-local-cloud.service",
+        "server-oficina-backup.service", "server-oficina-backup.timer")))
+    check("s1 observador", service_state("server-oficina-local-cloud") == {"enabled": True, "active": "active"})
+    check("s1 backup", sums_ok and "LOCAL_CLOUD_OK" in r.stdout and "PRE_UPGRADE_BACKUP_OK" in r.stdout)
+    record("instalacion_limpia", r, release=first,
+           files=mode(NS["/srv/server-oficina"] / "files"), versions=mode(NS["/srv/server-oficina"] / "versions"),
+           codigo_dueno_root=True, backup_sha_ok=sums_ok, observador=service_state("server-oficina-local-cloud"))
+
+    # 2 · reinstalar la misma VERSION: directorio nuevo, previa intacta, env del operador conservado
+    env_file = NS["/etc/server-oficina"] / "server-oficina.env"
+    env_file.write_text(env_file.read_text() + "SERVER_OFICINA_SYNCTHING_API_KEY=clave-del-operador\n")
+    before = tree_digest(rel1)
+    r = run_installer(src, "s2_reinstalar")
+    check("s2", r.returncode == 0, r.stderr[-2000:])
+    second = current_release()
+    info = (lab_path(second) / "RELEASE_INFO").read_text()
+    check("s2 release nueva", second != first)
+    check("s2 previa intacta", tree_digest(rel1) == before)
+    check("s2 RELEASE_INFO", f"previous_release={first}" in info, info)
+    check("s2 env operador", "SERVER_OFICINA_SYNCTHING_API_KEY=clave-del-operador" in env_file.read_text())
+    record("reinstalar_misma_version", r, release=second, previa=first, previa_intacta=True,
+           env_operador_conservado=True)
+
+    # 3 · colisión forzada: mismo instante => directorio existente => no se toca nada
+    stamp = second.rsplit("+", 1)[1].split(".", 1)[0]
+    r = run_installer(src, "s3_colision", LAB_STAMP=stamp)
+    check("s3", r.returncode == 6 and "RELEASE_COLLISION" in r.stderr, r.stderr[-500:])
+    check("s3 current intacto", current_release() == second)
+    record("colision_de_release", r, current=current_release())
+
+    # 4 · health falla => rollback a la release previa
+    r = run_installer(src, "s4_health", LAB_BREAK_HEALTH="1", LAB_GOOD_CURRENT=second)
+    check("s4", r.returncode == 5 and "ROLLBACK_RELEASE_OK" in r.stderr, r.stderr[-1500:])
+    check("s4 current", current_release() == second)
+    check("s4 observador intacto", service_state("server-oficina-local-cloud")["enabled"])
+    record("health_fail_rollback", r, current=current_release(), observador=service_state("server-oficina-local-cloud"))
+
+    # 5 · observador en bucle de reinicios => rollback; la previa tenía observador activo
+    r = run_installer(src, "s5_observador", LAB_BREAK_WORKER="1", LAB_GOOD_CURRENT=second)
+    check("s5", r.returncode == 7 and "LOCAL_CLOUD_FAIL" in r.stderr and "ROLLBACK_RELEASE_OK" in r.stderr,
+          r.stderr[-1500:])
+    check("s5 current", current_release() == second)
+    check("s5 observador sigue habilitado", service_state("server-oficina-local-cloud")["enabled"])
+    record("observador_falla_rollback", r, current=current_release())
+
+    # 6 · actualización desde una release legado (sin observador) que falla => se deshabilita
+    legacy_ns = "/opt/server-oficina/releases/0.1.0-alpha.2"
+    legacy = lab_path(legacy_ns)
+    (legacy / "app").mkdir(parents=True)
+    (legacy / "VERSION").write_text("0.1.0-alpha.2\n")
+    link = NS["/opt/server-oficina"] / "current"
+    link.unlink()
+    link.symlink_to(legacy_ns)
+    (STATE / "server-oficina-local-cloud.enabled").unlink()
+    (STATE / "server-oficina-local-cloud.active").write_text("inactive\n")
+    r = run_installer(src, "s6_legado", LAB_BREAK_WORKER="1", LAB_GOOD_CURRENT=legacy_ns)
+    check("s6", r.returncode == 7, r.stderr[-1500:])
+    check("s6 current legado", current_release() == legacy_ns)
+    check("s6 observador deshabilitado", not service_state("server-oficina-local-cloud")["enabled"])
+    record("rollback_a_legado_sin_observador", r, current=current_release(),
+           observador=service_state("server-oficina-local-cloud"))
+
+    releases = sorted(p.name for p in (NS["/opt/server-oficina"] / "releases").iterdir())
+    EVIDENCE["releases_conservadas"] = releases
+    EVIDENCE["result"] = "INSTALLER_LAB_OK"
+    (LAB / "evidence.json").write_text(json.dumps(EVIDENCE, indent=2, ensure_ascii=False))
+    print("INSTALLER_LAB_OK", flush=True)
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except AssertionError as exc:
+        EVIDENCE["result"] = f"FAIL: {exc}"
+        (LAB / "evidence.json").write_text(json.dumps(EVIDENCE, indent=2, ensure_ascii=False))
+        print(f"INSTALLER_LAB_FAIL {exc}", file=sys.stderr)
+        raise SystemExit(1)

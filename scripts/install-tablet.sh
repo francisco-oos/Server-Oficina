@@ -17,7 +17,15 @@ VERSIONS=$DATA/versions
 SERVICE_USER=serveroficina
 SERVICE_GROUP=serveroficina
 LOCAL_CLOUD=server-oficina-local-cloud
-PREVIOUS=$(readlink -f "$CURRENT" 2>/dev/null || true)
+# `readlink -f` devuelve la ruta aunque no exista: sin este control una primera
+# instalación tomaría `current` como su propia release previa y un rollback lo
+# convertiría en un symlink en bucle.
+PREVIOUS=""
+if [[ -L "$CURRENT" ]]; then PREVIOUS=$(readlink -f "$CURRENT" 2>/dev/null || true); fi
+if [[ -n "$PREVIOUS" && ! -d "$PREVIOUS" ]]; then
+  echo "AVISO: current apunta a una release inexistente ($PREVIOUS); no hay rollback posible" >&2
+  PREVIOUS=""
+fi
 LOCAL_CLOUD_WAS_ENABLED=$(systemctl is-enabled "$LOCAL_CLOUD" 2>/dev/null || true)
 
 # Nunca sobrescribir la release activa ni reutilizar un directorio instalado.
@@ -38,20 +46,26 @@ if [[ ! -s "$DATA/secrets/postgres_password" ]]; then
   chmod 600 "$DATA/secrets/postgres_password"
 fi
 
-# Carpetas de Nube Local declaradas en server-oficina-local-cloud.service.
+# Carpetas de Nube Local (modelo de permisos en docs/arquitectura/53):
+#   files/     root:serveroficina 2750  la app sólo LEE; escribe Syncthing del hub
+#   versions/  serveroficina      2750  sólo el observador escribe el historial
 # Sólo se crean si faltan: nunca se cambia (ni recursivamente) el dueño de una
 # carpeta existente porque Syncthing del hub puede depender de sus permisos.
-for dir in "$FILES" "$VERSIONS"; do
-  if [[ ! -d "$dir" ]]; then
-    install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 2770 "$dir"
-    echo "CREADO: $dir"
-  fi
-done
+if [[ ! -d "$FILES" ]]; then
+  install -d -o root -g "$SERVICE_GROUP" -m 2750 "$FILES"
+  echo "CREADO: $FILES"
+fi
+if [[ ! -d "$VERSIONS" ]]; then
+  install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 2750 "$VERSIONS"
+  echo "CREADO: $VERSIONS"
+fi
 runuser -u "$SERVICE_USER" -- test -w "$VERSIONS" || { echo "$VERSIONS no es escribible por $SERVICE_USER" >&2; exit 8; }
 runuser -u "$SERVICE_USER" -- test -r "$FILES" -a -x "$FILES" || { echo "$FILES no es legible por $SERVICE_USER" >&2; exit 8; }
 
-# Copiar y validar la nueva release ANTES de tocar el puntero current.
-rsync -a --exclude '.git' --exclude '.venv' --exclude 'venv' --exclude '__pycache__' --exclude '*.pyc' \
+# Copiar y validar la nueva release ANTES de tocar el puntero current. El código
+# queda de root y sin escritura de grupo/otros: rsync -a como root conservaría
+# el dueño del checkout (p. ej. adminoficina) y lo haría editable en producción.
+rsync -a --chown=root:root --chmod=Dgo-w,Fgo-w --exclude '.git' --exclude '.venv' --exclude 'venv' --exclude '__pycache__' --exclude '*.pyc' \
   --exclude '.pytest_cache' --exclude 'runtime' --exclude 'tests/test.db' --exclude 'tests/runtime' \
   --exclude '.env' "$SRC/" "$RELEASE/"
 cat > "$RELEASE/RELEASE_INFO" <<INFO
@@ -67,22 +81,8 @@ python3 -m venv "$RELEASE/.venv"
 "$RELEASE/.venv/bin/pip" install -r "$RELEASE/requirements-dev.txt"
 ( cd "$RELEASE" && ./scripts/verify-package.sh )
 
-# Backup pre-upgrade real y verificable. La actualización alpha.3 sólo añade
-# tablas, pero el dump permite volver atrás ante cualquier comportamiento no
-# esperado en producción.
-if docker inspect server-oficina-postgres >/dev/null 2>&1; then
-  PREBACK="$DATA/backups/server-oficina/pre-upgrade-${VERSION}-${STAMP}"
-  mkdir -p "$PREBACK"
-  if docker exec server-oficina-postgres pg_isready -U serveroficina -d server_oficina >/dev/null 2>&1; then
-    docker exec server-oficina-postgres pg_dump -U serveroficina -d server_oficina -Fc > "$PREBACK/database.dump"
-    if [[ -n "$PREVIOUS" && -f "$PREVIOUS/VERSION" ]]; then cp "$PREVIOUS/VERSION" "$PREBACK/PREVIOUS_VERSION"; fi
-    echo "$RELEASE_ID" > "$PREBACK/NEW_RELEASE_ID"
-    sha256sum "$PREBACK/database.dump" > "$PREBACK/SHA256SUMS"
-    chmod 750 "$PREBACK"; chmod 640 "$PREBACK"/* 2>/dev/null || true
-    echo "PRE_UPGRADE_BACKUP_OK: $PREBACK"
-  fi
-fi
-
+# PostgreSQL arriba y sano ANTES del respaldo: un contenedor detenido no debe
+# dejar la actualización sin backup ni saltárselo en silencio.
 install -m 0640 "$RELEASE/deploy/infra/compose.yml" "$INFRA/compose.yml"
 docker compose -f "$INFRA/compose.yml" up -d postgres
 for _ in $(seq 1 30); do
@@ -91,6 +91,18 @@ for _ in $(seq 1 30); do
   sleep 2
 done
 [[ "${STATUS:-}" == "healthy" ]] || { docker logs --tail=100 server-oficina-postgres; exit 4; }
+
+# Backup pre-upgrade real y verificable (siempre; un fallo de pg_dump aborta
+# antes de tocar `current`).
+PREBACK="$DATA/backups/server-oficina/pre-upgrade-${VERSION}-${STAMP}"
+mkdir -p "$PREBACK"
+docker exec server-oficina-postgres pg_dump -U serveroficina -d server_oficina -Fc > "$PREBACK/database.dump"
+if [[ -n "$PREVIOUS" && -f "$PREVIOUS/VERSION" ]]; then cp "$PREVIOUS/VERSION" "$PREBACK/PREVIOUS_VERSION"; fi
+echo "${PREVIOUS:-NINGUNA}" > "$PREBACK/PREVIOUS_RELEASE"
+echo "$RELEASE_ID" > "$PREBACK/NEW_RELEASE_ID"
+( cd "$PREBACK" && sha256sum database.dump > SHA256SUMS )  # rutas relativas: verificable fuera del host
+chmod 750 "$PREBACK"; chmod 640 "$PREBACK"/* 2>/dev/null || true
+echo "PRE_UPGRADE_BACKUP_OK: $PREBACK"
 
 DBPASS=$(cat "$DATA/secrets/postgres_password")
 APP_HOST=127.0.0.1
@@ -134,10 +146,24 @@ install -m 0644 "$RELEASE/deploy/server-oficina-backup.timer" /etc/systemd/syste
 install -m 0644 "$RELEASE/deploy/$LOCAL_CLOUD.service" "/etc/systemd/system/$LOCAL_CLOUD.service"
 systemctl daemon-reload
 
+# Cambio atómico del puntero: nunca existe un instante sin `current`.
+swap_current() {
+  ln -sfn "$1" "$CURRENT.new"
+  mv -Tf "$CURRENT.new" "$CURRENT"
+}
+
+wait_health() {
+  for _ in $(seq 1 20); do
+    curl -fsS http://127.0.0.1:8080/api/health >/dev/null 2>&1 && return 0
+    sleep 2
+  done
+  return 1
+}
+
 rollback() {
   echo "$1: intentando rollback de release" >&2
   if [[ -n "$PREVIOUS" && -d "$PREVIOUS" ]]; then
-    ln -sfn "$PREVIOUS" "$CURRENT"
+    swap_current "$PREVIOUS"
   fi
   # El observador vuelve a su estado previo; una release sin worker no puede ejecutarlo.
   if [[ "$LOCAL_CLOUD_WAS_ENABLED" != "enabled" || -z "$PREVIOUS" || ! -f "$PREVIOUS/app/workers/local_cloud_worker.py" ]]; then
@@ -145,18 +171,16 @@ rollback() {
   fi
   if [[ -n "$PREVIOUS" && -d "$PREVIOUS" ]]; then
     systemctl restart server-oficina || true
-    sleep 2
-    curl -fsS http://127.0.0.1:8080/api/health >/dev/null 2>&1 && echo "ROLLBACK_RELEASE_OK: $PREVIOUS" >&2 || true
+    if wait_health; then echo "ROLLBACK_RELEASE_OK: $PREVIOUS" >&2; else echo "ROLLBACK_HEALTH_FAIL: $PREVIOUS" >&2; fi
   fi
 }
 
 # Promoción controlada: si el health check falla, se recupera el current previo.
-ln -sfn "$RELEASE" "$CURRENT"
+swap_current "$RELEASE"
 systemctl enable server-oficina >/dev/null 2>&1 || true
 systemctl restart server-oficina
 systemctl enable --now server-oficina-backup.timer
-sleep 3
-if ! curl -fsS http://127.0.0.1:8080/api/health | python3 -m json.tool; then
+if ! wait_health || ! curl -fsS http://127.0.0.1:8080/api/health | python3 -m json.tool; then
   journalctl -u server-oficina -n 100 --no-pager >&2 || true
   rollback HEALTH_FAIL
   exit 5

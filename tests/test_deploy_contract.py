@@ -41,9 +41,7 @@ def _created_dirs() -> set[str]:
     mkdir = re.search(r'mkdir -p .*"\$DATA"/\{([^}]*)\}', INSTALLER)
     assert mkdir, "el instalador debe crear la estructura base de /srv"
     created |= {f"{variables['DATA']}/{part}" for part in mkdir.group(1).split(",")}
-    loop = re.search(r"^for dir in (.+); do$", INSTALLER, re.M)
-    assert loop, "el instalador debe crear las carpetas de Nube Local"
-    for token in re.findall(r'"\$([A-Z_]+)"', loop.group(1)):
+    for token in re.findall(r'^\s*install -d .*"\$([A-Z_]+)"$', INSTALLER, re.M):
         created.add(variables[token])
     return created
 
@@ -81,9 +79,30 @@ def test_env_points_content_store_to_the_writable_path_of_the_observer():
 def test_installer_never_overwrites_an_existing_release():
     assert "releases/$VERSION" not in INSTALLER
     guard = INSTALLER.index("assert_new_release")
-    assert guard < INSTALLER.index("rsync ")
-    assert guard < INSTALLER.index('ln -sfn "$RELEASE" "$CURRENT"')
+    promote = INSTALLER.index('swap_current "$RELEASE"')
+    assert guard < INSTALLER.index("rsync ") < promote
     assert "--delete" not in INSTALLER.split("rsync ", 1)[1].split("\n", 1)[0]
+    # Respaldo pre-upgrade siempre antes de promover; `current` se cambia de forma atómica.
+    assert INSTALLER.index("PRE_UPGRADE_BACKUP_OK") < promote
+    assert 'mv -Tf "$CURRENT.new" "$CURRENT"' in INSTALLER
+    assert 'ln -sfn "$RELEASE" "$CURRENT"' not in INSTALLER
+
+
+def test_release_code_is_owned_by_root_not_by_the_checkout_owner():
+    rsync = INSTALLER.split("\nrsync ", 1)[1].split("\n", 1)[0]
+    assert "--chown=root:root" in rsync and "--chmod=Dgo-w,Fgo-w" in rsync
+
+
+def test_permission_model_least_privilege():
+    variables = _installer_vars()
+    files, versions = variables["FILES"], variables["VERSIONS"]
+    assert re.search(r'install -d -o root -g "\$SERVICE_GROUP" -m 2750 "\$FILES"', INSTALLER)
+    assert re.search(r'install -d -o "\$SERVICE_USER" -g "\$SERVICE_GROUP" -m 2750 "\$VERSIONS"', INSTALLER)
+    # Observador: sólo versions/ escribible.
+    assert _unit_directives("server-oficina-local-cloud.service", "ReadWritePaths") == [versions]
+    # API: no escribe archivos sincronizados ni historial.
+    read_only = _unit_directives("server-oficina.service", "ReadOnlyPaths")
+    assert f"-{files}" in read_only and f"-{versions}" in read_only
 
 
 def _bash(script: str, cwd: Path | None = None) -> subprocess.CompletedProcess:

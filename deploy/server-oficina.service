@@ -18,6 +18,9 @@ PrivateTmp=true
 ProtectSystem=full
 ProtectHome=true
 ReadWritePaths=/srv/server-oficina/data/app
+# La API no escribe archivos sincronizados ni el historial (lo hacen Syncthing y el
+# observador). '-' tolera que aún no existan en instalaciones previas.
+ReadOnlyPaths=-/srv/server-oficina/files -/srv/server-oficina/versions
 
 [Install]
 WantedBy=multi-user.target
