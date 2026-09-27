@@ -76,6 +76,7 @@ responsabilidad para que la raíz de `docs/` permanezca pequeña y navegable.
 - `operacion/24_ACTUALIZACION_Y_ROLLBACK_ALPHA2_ALPHA3.md`
 - `operacion/36_BACKUP_RESTORE.md`
 - `operacion/45_FASE_1_SINCRONIZACION_PC_LATITUDE.md`
+- `operacion/52_RUNBOOK_GATE_1_PC_LATITUDE.md` — PRE/instalación/POST y escenarios del gate físico 1
 
 ## Desarrollo
 
