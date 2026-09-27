@@ -86,6 +86,40 @@ Pendiente antes de lectores/LLM:
 - Separación completa `Core + Domain Pack` todavía no está terminada: existen
   módulos sísmicos explícitos en el repositorio.
 
+### Hallazgos del relevo 2026-09-27 (ver `reports/RELEVO_FASE1_20260927.md`)
+
+Corregidos en la rama candidata (con prueba automatizada):
+
+- el observador Nube Local no arrancaba como proceso independiente
+  (`NoReferencedTableError: projects`) — nunca había corrido fuera de pytest;
+- un archivo restaurado con el mismo mtime/tamaño quedaba tombstoned para siempre;
+- raíz de share ausente/desmontada registraba borrado masivo;
+- un archivo problemático (colisión de mayúsculas, symlink, desaparece durante
+  el hash) detenía el observador completo en bucle de reinicios;
+- SHA-256 recalculado cada 5 s para archivos tocados sin cambio de contenido;
+- `server-oficina-local-cloud.service` no se instalaba, sus `ReadWritePaths`
+  no existían y el env no fijaba `SYNC_ROOT`/`VERSIONS_ROOT`;
+- la release se nombraba sólo por VERSION: reinstalar la misma VERSION
+  sobrescribía en caliente el código activo y anulaba el rollback;
+- `MANIFEST.sha256` obsoleto: `VALIDAR_SERVER_OFICINA.sh` no llegaba a
+  `PACKAGE_OK` con CI verde.
+
+Abiertos:
+
+- **UFW por subred**: 8080/Syncthing sólo desde la subred vigente; si el router
+  nuevo usa otra subred el gate de cambio de Wi-Fi falla. Requiere decisión
+  (p. ej. RFC1918 en la interfaz LAN) antes del gate 24.
+- **Atribución de dispositivo** en el hub: sin Companion, `source_peer_id`
+  queda vacío; Syncthing conoce `modifiedBy` pero no se consulta aún.
+- **Rename** se registra como tombstone + documento nuevo (mismo SHA), sin
+  vínculo explícito de renombrado.
+- **Cuarentenas** (colisión, symlink, nombre no portable) sólo se registran en
+  el journal; falta exponerlas como revisión humana en la UI.
+- **Backup**: `backup.sh` no incluye `versions/` (ContentStore) ni la identidad
+  Syncthing del hub.
+- Syncthing de Debian (hub) y de Windows (PC) pueden diferir de mayor versión;
+  CI prueba sólo 2.1.5.
+
 ### Administración GitHub pendiente
 
 La integración GitHub usada por este trabajo no expone una mutación de
