@@ -34,16 +34,31 @@ Rama `claude/syncthing-phase1-integration-v0.2` sobre `agent/openai/sync-core-v0
   que restaura su estado previo; arranca con `server-oficina`;
 - permisos mínimos: `files/` sólo lectura para la app, `versions/` sólo para el
   observador;
-- firewall LAN por red confiable (SSID/cable) que sigue cambios de
-  router/DHCP sin fijar subredes (`scripts/lan_firewall.py`);
+- firewall LAN por **identidad de red** (MAC del gateway + perfil
+  NetworkManager + SSID; nunca sólo SSID o nombre de interfaz) que sigue
+  cambios de IP/DHCP sin fijar subredes; mismo SSID u otra LAN en la misma
+  `eth0` no heredan confianza; las confianzas `wifi:`/`wired:` antiguas se
+  ignoran (`scripts/lan_firewall.py`);
+- publicación LAN fail-closed: API en `127.0.0.1` salvo UFW activo con entrada
+  `deny`/`reject`, red confiable, reglas verificadas y health; si no, salida 10
+  `INSTALACION_SOLO_LOCAL` (antes: `|| true` y `0.0.0.0` con sólo ver UFW
+  activo); `--confiar-red-actual` como decisión explícita; el rollback
+  restaura también el env;
 - backup con inventario de `versions/`, identidad Syncthing del hub y réplica
-  externa fail-closed; restore que detiene/rearranca el observador y verifica
-  el historial; la retención ya no borra `pre-upgrade-*`.
+  externa fail-closed; la retención ya no borra `pre-upgrade-*`;
+- restore sin restauración parcial: validación completa (SHA, dump y tar
+  leídos enteros), `pg_restore --single-transaction` en una base nueva,
+  intercambio de nombres en un único COMMIT conservando la base previa,
+  `imports/`/`evidence/` previos movidos (nunca borrados) con informe de
+  diferencias, vuelta atrás si falla el health; salidas 20–24 y archivo de
+  resultado. El restore anterior (`pg_restore --clean` sobre la base viva)
+  dejaba la base vaciada a medias con un dump truncado.
 
 ### Calidad
 - MANIFEST estricto (`--check` detecta archivos no listados) en CI;
-- laboratorios: Syncthing real + observador (19 escenarios) e instalador real
-  en namespace aislado (11 escenarios), ambos en CI;
+- laboratorios en CI: Syncthing real + observador (19 escenarios), instalador
+  real en namespace aislado (16 escenarios, incl. LAN fail-closed) y restore
+  real contra PostgreSQL efímero (9 escenarios);
 - CI en ramas `agent/**` y `claude/**`, sin `pull_request_target` ni secretos.
 
 ## 0.2.0-alpha.1 — candidato 2026-09-21

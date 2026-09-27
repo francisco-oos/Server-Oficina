@@ -132,9 +132,22 @@ con `method=none` y la causa.
   aditivas). Para volver la base atrás se usa el dump `pre-upgrade-*`.
 * `server-oficina-local-cloud` arranca con `server-oficina` (`WantedBy`) y se
   detiene con él (`Requires`).
-* Firewall: `server-oficina-lan-firewall` confía por red (SSID/cable), deriva la
-  subred en cada cambio y sólo abre puertos a la subred RFC1918 actual de la
-  interfaz por defecto (ver `scripts/lan_firewall.py`).
+* Firewall: `server-oficina-lan-firewall` confía por **identidad de red** —
+  MAC del gateway (obligatoria) + UUID del perfil NetworkManager + SSID + medio,
+  nunca sólo SSID ni nombre de interfaz—, deriva la subred en cada cambio y sólo
+  abre puertos a la subred RFC1918 actual de la interfaz por defecto. Mismo
+  SSID u otra LAN en la misma `eth0` → sin reglas; router reemplazado → exige
+  `trust-current`. Identidad ilegible un momento: reglas mantenidas ≤ 600 s si
+  interfaz/subred/gateway no cambian (ver `scripts/lan_firewall.py`).
+* Publicación LAN fail-closed: la API escucha en `127.0.0.1` salvo que
+  `configurar-acceso-lan.sh` demuestre UFW activo con entrada `deny`/`reject`,
+  red confiable, reglas verificadas y health; si no, salida 10
+  (`INSTALACION_SOLO_LOCAL`), nunca instalación "sana" expuesta.
+* Restore: validación completa del respaldo (SHA, lectura entera del dump y del
+  tar) → `pg_restore --single-transaction` en una base nueva → intercambio de
+  nombres en un único COMMIT (la base previa queda como
+  `server_oficina_pre_restore_<fecha>`) → health; si falla, vuelta atrás. Nunca
+  una base parcial anunciada como restaurada (doc 36).
 
 ## 10 · Gates
 
@@ -144,7 +157,8 @@ con `method=none` y la causa.
 | Paquete (`PACKAGE_OK`, MANIFEST estricto) | CI + copia limpia | `VALIDAR_SERVER_OFICINA.sh` |
 | Syncthing real (transporte, 3 nodos) | CI | `syncthing_smoke.py` |
 | Syncthing real + observador (19 escenarios) | CI + laboratorio local | `hub_worker_lab.py` |
-| Instalador real en namespace aislado (11 escenarios) | CI + laboratorio local | `installer_lab.py` |
+| Instalador real en namespace aislado (16 escenarios, incl. publicación LAN fail-closed) | CI + laboratorio local | `installer_lab.py` |
+| Restore real contra PostgreSQL efímero (9 escenarios) | CI + laboratorio local | `restore_lab.py` |
 | **Latitude real**: PRE, instalación, systemd, PostgreSQL, permisos, Syncthing hub, backup/restore, UFW, cambio de Wi-Fi, reinicios, POST, 1 PC ↔ Latitude | **pendiente** | runbook 52 |
 
 Laboratorio verde ≠ hardware validado. No se pasa a 2 PCs sin cerrar 1 PC ↔ Latitude.
@@ -158,5 +172,9 @@ Laboratorio verde ≠ hardware validado. No se pasa a 2 PCs sin cerrar 1 PC ↔ 
 * Archivos muy grandes se leen tres veces al archivar (hash, copia, verificación)
   y bloquean el ciclo mientras tanto.
 * `ROOT_DEVICE_CHANGED` exige reiniciar el observador tras verificar el montaje.
-* El firewall necesita identificar la red (SSID vía `iw`); redes Wi-Fi sin SSID
-  detectable no reciben reglas hasta confiar explícitamente.
+* El firewall necesita leer la MAC del gateway (ARP) y, en Wi-Fi, el SSID; sin
+  ellos no hay reglas nuevas. Reemplazar el router exige `trust-current`.
+* Una vez publicada la API, la protección de 8080 es UFW: un `ufw disable`
+  manual la deja accesible hasta volver a ejecutar `configurar-acceso-lan.sh`.
+* El restore necesita espacio para una segunda copia de la base mientras
+  prepara; la base previa se conserva y se borra a mano tras verificar.

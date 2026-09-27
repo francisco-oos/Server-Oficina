@@ -62,19 +62,58 @@ retorno de la base por instalación) **no** se borran automáticamente.
 sudo ./RESTORE_SERVER_OFICINA.sh /srv/server-oficina/backups/server-oficina/<fecha>
 ```
 
-Acción administrativa explícita. El script verifica `SHA256SUMS`, detiene el
-observador y la API, restaura base y `data/app`, espera el health, rearranca el
-observador si estaba activo y ejecuta `python -m app.workers.verify_history`.
+Acción administrativa explícita. Garantía: **nunca queda una base a medias
+anunciada como restaurada**. El restore anterior ejecutaba
+`pg_restore --clean` directamente sobre `server_oficina`; con un dump truncado
+dejaba tablas vaciadas, API y observador detenidos y ningún mensaje de fallo
+(reproducido en `tests/integration/restore_lab.py` con PostgreSQL real).
 
-Procedimiento recomendado:
+| Fase | Qué hace | Si falla |
+|---|---|---|
+| 1 · Validación | `SHA256SUMS` estricto (`database.dump` y `app-files.tar.gz` deben figurar); lectura **completa** del dump (`pg_restore -f /dev/null`, sin escribir en ninguna base); `tar -tzf` completo y sólo rutas bajo `imports/` y `evidence/`; la base `server_oficina` existe | salida **20**: nada se tocó, servicios intactos |
+| 2 · Preparación | base **nueva** `server_oficina_restore_<fecha>` (`TEMPLATE template0`) con `pg_restore --single-transaction --exit-on-error --no-owner`: o entra entero o no entra nada; archivos en `data/app/.restore-staging-<fecha>` | salida **21**: se descartan la base temporal y el staging (creados por esta ejecución); base viva, `data/app` y servicios **nunca** se detuvieron |
+| 3 · Intercambio | detiene observador y API; **un único COMMIT** renombra `server_oficina` → `server_oficina_pre_restore_<fecha>` y la preparada → `server_oficina`; `imports/` y `evidence/` vivos se **mueven** a `data/app/.pre-restore-<fecha>/` y los preparados ocupan su lugar | vuelta atrás (fase 4) |
+| 4 · Health | arranca la API y espera `/api/health`; rearranca el observador si estaba activo | salida **22**: se deshace el intercambio (base y archivos previos, servicios como estaban). Si la vuelta atrás no se completa, o la API tampoco responde con los datos previos: salida **23** `RESTORE_FAIL_CRITICO`, servicios **detenidos a propósito** |
 
-1. Detener el servicio y restaurar primero a una **base temporal**.
-2. Restaurar la base real con el script.
-3. Si `verify_history` informa faltantes: copiar desde la réplica externa
-   `rsync -a --ignore-existing <BACKUP_VERSIONS_DEST>/sha256/ /srv/server-oficina/versions/sha256/`
-   y repetir `python -m app.workers.verify_history --deep` hasta `HISTORY_OK`.
-4. Comprobar `GET /api/health`, inicio de sesión y `GET /api/local-cloud/shares`
-   (estado del observador).
+Resultado:
+
+* `RESTORE_OK` (salida 0) sólo tras `/api/health` con los datos restaurados.
+  Salida 24 (`RESTORE_AVISO`): datos restaurados y API sana, pero el observador
+  no volvió a arrancar.
+* Cada ejecución deja `/srv/server-oficina/backups/restore-logs/restore-<fecha>.txt`
+  (`resultado`, `codigo`, `detalle`, `fase`, base previa, archivos previos,
+  estado de los servicios). La ruta se imprime al final.
+* Un error inesperado (`set -e`) se trata según la fase: nunca termina en
+  silencio.
+
+Qué **no** se borra:
+
+* La base previa queda como `server_oficina_pre_restore_<fecha>`. Borrarla a
+  mano tras verificar (`docker exec server-oficina-postgres psql -U serveroficina
+  -d postgres -c 'DROP DATABASE server_oficina_pre_restore_<fecha>'`).
+  Mientras tanto ocupa espacio: el restore necesita sitio para dos copias.
+* `imports/` y `evidence/` previos quedan íntegros en
+  `data/app/.pre-restore-<fecha>/` (root, 0700), con
+  `DIFERENCIAS_CON_RESPALDO.tsv`: archivos `ausente_en_respaldo` (subidos
+  después del respaldo) y `distinto_en_respaldo` (modificados). Revisar antes de
+  borrar; lo que haya que conservar se vuelve a importar por la aplicación.
+* Sólo se eliminan la base temporal y el staging creados por la propia
+  ejecución (nombre único con fecha), y sólo cuando se descartan.
+
+Otros directorios de `data/app` (p. ej. `backups/`) no forman parte del
+respaldo y no se tocan. Un dump con permisos (`GRANT`) a roles que no existen
+en el servidor falla en la fase 2 (salida 21) sin tocar nada: crear el rol y
+repetir.
+
+Después del restore el script ejecuta `verificar-historial.sh`. Si informa
+faltantes de `versions/`:
+
+1. copiar desde la réplica externa
+   `rsync -a --ignore-existing <BACKUP_VERSIONS_DEST>/sha256/ /srv/server-oficina/versions/sha256/`;
+2. repetir `sudo ./scripts/verificar-historial.sh --deep` hasta `HISTORY_OK`.
+
+Comprobar además inicio de sesión y `GET /api/local-cloud/shares` (estado del
+observador).
 
 ### Identidad Syncthing del hub
 
@@ -103,7 +142,10 @@ el hub nuevo tiene otra identidad y cada PC debe aceptarlo de nuevo.
 
 ## Verificación periódica
 
-Un respaldo que nunca se ha restaurado no es un respaldo. Restaurar a una base
-temporal con regularidad y ejecutar `verify_history --deep`. En la Latitude se
-validó `pg_dump`/`pg_restore` para la línea base alpha.2; la restauración con
-`versions/` e identidad del hub es **gate físico pendiente**.
+Un respaldo que nunca se ha restaurado no es un respaldo. Restaurar con
+regularidad (el propio restore prepara en una base temporal) y ejecutar
+`verificar-historial.sh --deep`. En la Latitude se validó `pg_dump`/`pg_restore`
+para la línea base alpha.2; este restore transaccional está probado **sólo en
+laboratorio** (`tests/integration/restore_lab.py`, PostgreSQL 16 de la
+distribución); en la Latitude (PostgreSQL 18.6 en Docker), con `versions/` e
+identidad del hub, es **gate físico pendiente (NOT RUN)**.

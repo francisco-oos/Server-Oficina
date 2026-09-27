@@ -136,6 +136,19 @@ Resueltos en código y probados en CI/laboratorio (**no** en la Latitude):
   release editable por el operador, backup pre-upgrade omitido, retención que
   borraba `pre-upgrade-*`, observador caído tras DETENER/INICIAR.
 
+Endurecimiento final (mismo PR, 2026-09-27), probado en CI/laboratorio, **no** en la Latitude:
+
+- Identidad de red del firewall: MAC del gateway + perfil NetworkManager + SSID
+  (antes `wifi:<SSID>` / `wired:<iface>`: otra red con el mismo SSID o la misma
+  `eth0` en otra LAN heredaba la confianza). Router reemplazado exige
+  `trust-current`.
+- Instalación fail-closed: la API ya no pasa a `0.0.0.0` sólo por ver UFW
+  activo ni se ignora un fallo del reconciliador (`|| true`); sin publicación
+  demostrada queda en `127.0.0.1` y la instalación sale con 10.
+- Restore: el dump se restaura en una base nueva en una sola transacción y se
+  intercambia de forma atómica; antes `pg_restore --clean` sobre la base viva
+  dejaba una restauración parcial con un dump truncado.
+
 Siguen abiertos:
 
 - Todos los gates físicos del runbook 52 (PRE, instalación, systemd, PostgreSQL,

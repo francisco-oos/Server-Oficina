@@ -37,7 +37,8 @@ Revisar en el archivo `~/server-oficina-evidencia/PRE-*.txt`:
 | `df -h /srv`, `/opt` | espacio para release + venv (~300 MB) | < 1 GB libre |
 | VG | `serer-ficina-ADQ-vg` (typo histórico) | — **no renombrar** |
 | `/srv/server-oficina/files` si ya existe | anotar dueño/modo (el instalador no los cambia; modelo esperado `root:serveroficina 2750`) | — |
-| `ufw status verbose` | anotar reglas `Server Oficina LAN` fijadas a subred (se reemplazan) y la regla de SSH | SSH depende de una regla que se vaya a tocar |
+| `ufw status verbose` | activo, `Default: deny (incoming)`; anotar reglas `Server Oficina LAN` fijadas a subred (se reemplazan) y la regla de SSH | SSH depende de una regla que se vaya a tocar |
+| `ip route show default`, `ip neigh show <gateway>`, `nmcli -t -f DEVICE,UUID,NAME connection show --active` | anotar interfaz, gateway, MAC del gateway y perfil NM: es la identidad que se confiará | la red no es la de la oficina |
 
 ## 2 · Validación del paquete en copia limpia
 
@@ -54,12 +55,16 @@ PATH="$TMP/.venv/bin:$PATH" ./VALIDAR_SERVER_OFICINA.sh     # debe terminar en P
 ## 3 · Instalación controlada
 
 ```bash
-cd ~/Server-Oficina && ./INSTALAR_EN_TABLETA.sh
+cd ~/Server-Oficina && ./INSTALAR_EN_TABLETA.sh --confiar-red-actual
 ```
 
+`--confiar-red-actual` es la decisión explícita de confiar en la red verificada
+en PRE (MAC del gateway + perfil NM + SSID). Sin él, en una instalación nueva la
+API queda sólo en `127.0.0.1` (salida 10).
+
 Marcadores esperados, en orden: `Release nueva: 0.2.0-alpha.1+<fecha>.g<commit>`,
-`PRE_UPGRADE_BACKUP_OK`, JSON de health, `LOCAL_CLOUD_OK` y, con UFW activo,
-`LAN_FIREWALL {...}` del reconciliador.
+`PRE_UPGRADE_BACKUP_OK`, JSON de health, `LOCAL_CLOUD_OK`, `LAN_FIREWALL {...}`
+del reconciliador y `LAN_PUBLICADA`.
 
 | Salida | Significado |
 |---|---|
@@ -68,6 +73,7 @@ Marcadores esperados, en orden: `Release nueva: 0.2.0-alpha.1+<fecha>.g<commit>`
 | 6 | colisión de release: no se tocó nada |
 | 7 | el observador Nube Local no quedó estable → rollback completo |
 | 8 | permisos de `files/` o `versions/` incompatibles con `serveroficina` |
+| 10 | `INSTALACION_SOLO_LOCAL`: release instalada y sana en `127.0.0.1`, pero la LAN **no** se publicó (`LAN_NO_PUBLICADA: <causa>`). No es un gate PASS: corregir la causa y ejecutar `sudo /opt/server-oficina/current/scripts/configurar-acceso-lan.sh [--confiar-red-actual]` |
 | otra ≠ 0 antes de promover | `verify-package.sh` o `pg_dump` fallaron: `current` intacto |
 
 Todo este flujo (incluidos los rollbacks) está probado en laboratorio con el
@@ -86,6 +92,9 @@ systemctl status server-oficina server-oficina-backup.timer server-oficina-local
 journalctl -u server-oficina-local-cloud -n 20 --no-pager     # LOCAL_CLOUD_START ... versions_root=/srv/server-oficina/versions
 stat -c '%U:%G %a %n' /opt/server-oficina/current/ /srv/server-oficina/files /srv/server-oficina/versions
 sudo python3 /opt/server-oficina/current/scripts/lan_firewall.py status
+grep '^SERVER_OFICINA_HOST=' /etc/server-oficina/server-oficina.env       # 0.0.0.0 sólo con LAN_PUBLICADA
+sudo ss -ltnp 'sport = :8080'                                              # escucha coherente con lo anterior
+sudo ufw status numbered | grep -E 'server-oficina-lan|22/tcp|SSH'         # 8080 sólo desde la subred actual; SSH intacta
 sudo systemctl start server-oficina-backup.service && sudo cat "$(ls -1d /srv/server-oficina/backups/server-oficina/2* | tail -1)/BACKUP_INFO"
 ```
 
@@ -191,15 +200,18 @@ Registrar IP anterior, IP nueva, tiempo hasta reconexión Syncthing y hasta
 `/api/health` desde la PC. **No** editar Device IDs.
 
 El firewall ya no fija la subred de la instalación: `server-oficina-lan-firewall`
-confía por **red** (SSID o cable) y recalcula la subred en cada cambio
-(dispatcher de NetworkManager o timer cada 2 min).
+confía por **identidad de red** (MAC del gateway + perfil NetworkManager + SSID;
+nunca sólo el SSID o el nombre de la interfaz) y recalcula la subred en cada
+cambio (dispatcher de NetworkManager o timer cada 2 min).
 
 | Caso | Esperado | Intervención permitida |
 |---|---|---|
-| misma Wi-Fi, nueva IP por DHCP | reconecta solo | ninguna |
-| misma Wi-Fi (SSID), router nuevo con otra subred | reglas recalculadas ≤ 2 min | ninguna |
-| Wi-Fi distinta (otro SSID) | **sin** reglas LAN hasta decidirlo | `sudo python3 /opt/server-oficina/current/scripts/lan_firewall.py trust-current` (decisión de confianza, no edición de IP) |
-| red pública / no RFC1918 | nunca se abre | — |
+| misma red, nueva IP por DHCP | reconecta solo | ninguna |
+| mismo router, rango DHCP cambiado | reglas recalculadas ≤ 2 min | ninguna |
+| mismo SSID en otro router (p. ej. punto de acceso móvil con el mismo nombre) | **sin** reglas LAN | ninguna (correcto) |
+| router de la oficina reemplazado | **sin** reglas LAN hasta decidirlo | `sudo python3 /opt/server-oficina/current/scripts/lan_firewall.py trust-current` (decisión de confianza, no edición de IP) |
+| Wi-Fi distinta | **sin** reglas LAN hasta decidirlo | ídem |
+| red pública / no RFC1918 | nunca se abre | — | — |
 
 Si hizo falta editar una IP o una subred a mano, el gate **falla**. Registrar
 `lan_firewall.py status` antes y después del cambio y el tiempo de recuperación.
@@ -209,5 +221,8 @@ Debe verificarse también que el reconciliador **no** tocó la regla de SSH.
 
 Todos los escenarios de §6 y §7 con evidencia (SHA, logs, tiempos), ningún
 reinicio del observador (`NRestarts=0`), `verify_history --deep` en
-`HISTORY_OK`, backup diario verificado con `BACKUP_INFO`, restore probado a base
-temporal y decisión tomada sobre la réplica externa de `versions/`.
+`HISTORY_OK`, backup diario verificado con `BACKUP_INFO`, restore ejecutado con
+`RESTORE_SERVER_OFICINA.sh` (resultado `RESTORE_OK` en
+`/srv/server-oficina/backups/restore-logs/`, base previa
+`server_oficina_pre_restore_*` revisada y borrada a mano) y decisión tomada
+sobre la réplica externa de `versions/`.
